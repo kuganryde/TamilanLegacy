@@ -1,0 +1,44 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Cinzel:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cinzel", Georgia, Cambria, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Custom Vibrant Palette Colors */
+  --color-chola-bg: #120F0D;
+  --color-chola-text: #F4EFE6;
+  --color-chola-panel: #241D18;
+  --color-chola-subpanel: #2D241E;
+  --color-chola-subpanel-hover: #3D3028;
+  --color-chola-header: #1C1713;
+  --color-chola-rust: #D2691E;
+  --color-chola-rust-hover: #E37E32;
+  --color-chola-gold: #D4AF37;
+  --color-chola-blue: #4A90E2;
+  --color-chola-pink: #FF6B6B;
+  --color-chola-red: #8B0000;
+  --color-chola-sand: #F5DEB3;
+  --color-chola-sand-text: #4B3621;
+  --color-chola-sand-border: #8B4513;
+}
+
+/* Custom Scrollbar styled for the Chola Dynasty feeling */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(120, 53, 4, 0.05);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(210, 105, 30, 0.3);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(210, 105, 30, 0.5);
+}

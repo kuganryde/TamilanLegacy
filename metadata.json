@@ -1,0 +1,6 @@
+{
+  "name": "Tamilan Legacy",
+  "description": "An interactive historical strategy game where you manage the Four Pillars of Chola society, zone cities using the ancient Nagara system, and construct the monumental Thanjavur Temple.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
