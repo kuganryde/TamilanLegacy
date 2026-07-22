@@ -412,22 +412,12 @@ export default function App() {
     }));
   };
 
-  // Unlock tech node
+  // Unlock tech node (deduct the Arivu cost exactly once)
   const handleUnlockTech = (id: string) => {
-    setTechs(prev =>
-      prev.map(t => {
-        if (t.id === id) {
-          setResources(r => ({ ...r, aivu: r.arivu - t.cost }));
-          return { ...t, unlocked: true };
-        }
-        return t;
-      })
-    );
-    // Deduct raw arivu cost directly
     const techNode = techs.find(t => t.id === id);
-    if (techNode) {
-      setResources(prev => ({ ...prev, arivu: Math.max(0, prev.arivu - techNode.cost) }));
-    }
+    if (!techNode || techNode.unlocked) return;
+    setTechs(prev => prev.map(t => (t.id === id ? { ...t, unlocked: true } : t)));
+    setResources(prev => ({ ...prev, arivu: Math.max(0, prev.arivu - techNode.cost) }));
   };
 
   const handleToggleMute = () => {

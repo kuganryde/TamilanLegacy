@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { GridCell, ZoneType, Resources } from '../types';
 import { Hammer, Users, RefreshCw, Droplet, Coins, Flame, Award, Heart } from 'lucide-react';
 import { audio } from '../utils/audio';
+import Nagara3D from './Nagara3D';
 
 interface NagaraGridProps {
   grid: GridCell[];
@@ -142,77 +143,12 @@ export default function NagaraGrid({
           {/* Subtle Grid Sun-ray / Dust effects */}
           <div className="absolute inset-0 bg-radial-gradient pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#D2691E]/20 via-transparent to-transparent" />
           
-          {/* Render 8x8 Isometric/Styled Grid */}
-          <div className="grid grid-cols-8 grid-rows-8 gap-1.5 w-full h-full max-w-[440px] max-h-[440px]">
-            {grid.map((cell) => {
-              const isSelected = cell.id === selectedCellId;
-              const hasWorkers = cell.assignedWorkers > 0;
-              
-              return (
-                <button
-                  key={cell.id}
-                  id={`grid-cell-${cell.row}-${cell.col}`}
-                  onClick={() => handleCellClick(cell)}
-                  className={`relative rounded flex flex-col justify-between p-1 select-none text-[8px] font-mono font-bold transition-all duration-200 border-2 active:scale-95 ${getZoneStyles(cell)} ${
-                    isSelected 
-                      ? 'ring-4 ring-[#D2691E] border-[#D2691E] z-10 scale-102 shadow-lg shadow-[#D2691E]/20' 
-                      : 'border-transparent'
-                  }`}
-                >
-                  {/* Top indicators */}
-                  <div className="flex justify-between items-center w-full">
-                    <span className="opacity-75 text-[7px]">
-                      {cell.row},{cell.col}
-                    </span>
-                    {cell.hasWater && cell.type !== 'river' && (
-                      <Droplet className="w-2.5 h-2.5 text-cyan-300 animate-bounce" />
-                    )}
-                  </div>
-
-                  {/* Voxel Representative Drawing (using absolute elements/mini-bars to convey 3D depth) */}
-                  <div className="my-auto flex flex-col items-center justify-center">
-                    {cell.type === 'ur' && (
-                      <div className="w-4 h-2 bg-emerald-800/40 rounded-full flex items-center justify-center">
-                        🌾
-                      </div>
-                    )}
-                    {cell.type === 'nagar' && (
-                      <div className="w-5 h-4 bg-orange-600/40 rounded flex flex-col justify-end items-center border border-orange-500/30">
-                        <span className="text-[6px] text-white">🏪</span>
-                      </div>
-                    )}
-                    {cell.type === 'kovil' && (
-                      <div className="w-5 h-5 bg-rose-900/60 rounded-t-lg flex items-center justify-center border-t-2 border-amber-400">
-                        🕉️
-                      </div>
-                    )}
-                    {cell.type === 'eri' && (
-                      <div className="w-5 h-3 bg-sky-300/60 rounded border border-cyan-400">
-                        🌊
-                      </div>
-                    )}
-                    {cell.type === 'river' && (
-                      <div className="w-full h-1 bg-cyan-300/80 rounded" />
-                    )}
-                    {cell.type === 'quarry' && (
-                      <div className="text-[12px]">⛰️</div>
-                    )}
-                  </div>
-
-                  {/* Bottom indicators: workers and status */}
-                  <div className="w-full flex justify-between items-end text-[7px]">
-                    <span className="truncate max-w-[40px] tracking-tighter opacity-90">
-                      {getCellLabel(cell).split(' ')[0]}
-                    </span>
-                    {hasWorkers && (
-                      <span className="flex items-center gap-[1px] bg-black/40 px-[3px] py-[1px] rounded text-[#D4AF37]">
-                        👷{cell.assignedWorkers}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+          {/* Real-time 3D Nagara city (drag to rotate · scroll to zoom · click a plot) */}
+          <div className="absolute inset-3 rounded-lg overflow-hidden">
+            <Nagara3D grid={grid} selectedId={selectedCellId} onSelect={handleCellClick} />
+          </div>
+          <div className="absolute bottom-2 left-0 right-0 text-center text-[10px] font-mono text-stone-400/80 pointer-events-none">
+            Drag to rotate · scroll to zoom · click a plot to build
           </div>
         </div>
 
