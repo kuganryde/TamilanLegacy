@@ -6,6 +6,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GridCell } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -76,8 +77,24 @@ function workerMarkers(n: number): THREE.Group {
   return g;
 }
 
+// Blender-authored .glb prototypes, loaded at runtime and cloned per tile.
+// Keys map a ZoneType to its model; missing keys fall back to procedural geometry.
+type Protos = { kovil?: THREE.Object3D; nagar?: THREE.Object3D; quarry?: THREE.Object3D };
+
+// Clone a loaded model prototype and scale it via a wrapper (preserving the
+// model's own transform). Cloned meshes share the prototype's geometry and
+// materials, so they are flagged so disposal never frees those shared resources.
+function cloneProto(proto: THREE.Object3D, scale: number): THREE.Object3D {
+  const wrap = new THREE.Group();
+  const c = proto.clone(true);
+  c.traverse((o) => { o.userData.shared = true; });
+  wrap.add(c);
+  wrap.scale.setScalar(scale);
+  return wrap;
+}
+
 // Build the on-tile structure for a cell (empty for river/empty land).
-function buildStructure(cell: GridCell): THREE.Group {
+function buildStructure(cell: GridCell, protos: Protos): THREE.Group {
   const g = new THREE.Group();
   const lvl = Math.max(1, cell.level);
   switch (cell.type) {
@@ -87,6 +104,7 @@ function buildStructure(cell: GridCell): THREE.Group {
       break;
     }
     case 'nagar': {
+      if (protos.nagar) { g.add(cloneProto(protos.nagar, 0.82 + (lvl - 1) * 0.14)); break; }
       const h = 0.28 + (lvl - 1) * 0.18;
       g.add(box(0.6, h, 0.6, COL.wall, 0));
       g.add(box(0.72, 0.06, 0.72, COL.roof, h));
@@ -95,7 +113,8 @@ function buildStructure(cell: GridCell): THREE.Group {
       break;
     }
     case 'kovil':
-      g.add(gopuram(0.85 + (lvl - 1) * 0.22));
+      if (protos.kovil) g.add(cloneProto(protos.kovil, 0.86 + (lvl - 1) * 0.18));
+      else g.add(gopuram(0.85 + (lvl - 1) * 0.22));
       break;
     case 'eri': {
       g.add(box(0.9, 0.12, 0.9, COL.stone, 0));
@@ -106,6 +125,7 @@ function buildStructure(cell: GridCell): THREE.Group {
       break;
     }
     case 'quarry': {
+      if (protos.quarry) { g.add(cloneProto(protos.quarry, 1.0)); break; }
       for (const [dx, dz, s] of [[-0.2, -0.15, 0.26], [0.18, 0.1, 0.32], [0.05, -0.22, 0.2]] as const) {
         const rock = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), mat(COL.granite));
         rock.position.set(dx, s * 0.55, dz); rock.rotation.set(dx, dz, s); rock.castShadow = true; rock.receiveShadow = true;
@@ -151,6 +171,8 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
   useEffect(() => {
     const wrap = wrapRef.current!;
     const scene = new THREE.Scene();
+    const protos: Protos = {};   // filled asynchronously by GLTFLoader
+    let disposed = false;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -196,7 +218,8 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
 
     const disposeGroup = (g: THREE.Object3D) => {
       g.traverse((o) => {
-        if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
+        // Never free geometry/materials shared from a loaded model prototype.
+        if (o instanceof THREE.Mesh && !o.userData.shared) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
       });
     };
 
@@ -209,7 +232,7 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       scene.add(tile);
       tileMeshes.push(tile);
 
-      const group = buildStructure(cell);
+      const group = buildStructure(cell, protos);
       group.position.set(worldX(cell.col), 0, worldZ(cell.row));
       scene.add(group);
 
@@ -230,6 +253,36 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       }
     };
     reconcile(grid);
+
+    // Tear down every cell record and rebuild from the current grid. Used once
+    // the Blender models arrive so temple/market/quarry tiles swap from their
+    // procedural placeholders to the loaded .glb geometry.
+    const rebuildAll = () => {
+      for (const rec of recs.values()) {
+        scene.remove(rec.tile); rec.tile.geometry.dispose(); (rec.tile.material as THREE.Material).dispose();
+        scene.remove(rec.group); disposeGroup(rec.group);
+      }
+      recs.clear();
+      tileMeshes.length = 0;
+      reconcile(gridRef.current);
+    };
+
+    // Load the Chola building models. They enhance progressively: the board is
+    // interactive immediately with procedural shapes, then upgrades on arrival.
+    const loader = new GLTFLoader();
+    const MODELS: [keyof Protos, string][] = [
+      ['kovil', '/models/gopuram.glb'],
+      ['nagar', '/models/market.glb'],
+      ['quarry', '/models/quarry.glb'],
+    ];
+    Promise.all(MODELS.map(([key, url]) =>
+      loader.loadAsync(url).then((gltf) => {
+        gltf.scene.traverse((o) => {
+          if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; }
+        });
+        protos[key] = gltf.scene;
+      }).catch((err) => { console.warn('Nagara3D: model failed to load', url, err); }),
+    )).then(() => { if (!disposed) rebuildAll(); });
 
     // Selection ring + hover ring.
     const ringGeo = new THREE.TorusGeometry(0.62, 0.05, 8, 24);
@@ -322,6 +375,7 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
     raf = requestAnimationFrame(tick);
 
     return () => {
+      disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
       el.removeEventListener('pointermove', onMove);
@@ -330,6 +384,12 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       el.removeEventListener('pointerleave', onLeave);
       controls.dispose();
       for (const rec of recs.values()) { disposeGroup(rec.tile); disposeGroup(rec.group); }
+      // Free the shared model prototypes (their clones were skipped above).
+      for (const key of Object.keys(protos) as (keyof Protos)[]) {
+        protos[key]?.traverse((o) => {
+          if (o instanceof THREE.Mesh) { o.geometry.dispose(); (o.material as THREE.Material).dispose(); }
+        });
+      }
       ringGeo.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === wrap) wrap.removeChild(renderer.domElement);
