@@ -72,6 +72,7 @@ function workerMarkers(n: number): THREE.Group {
     head.position.y = 0.19; head.castShadow = true;
     wk.add(body); wk.add(head);
     wk.position.set(Math.cos(a) * 0.34, 0, Math.sin(a) * 0.34);
+    wk.userData.anim = 'worker';
     g.add(wk);
   }
   return g;
@@ -80,7 +81,8 @@ function workerMarkers(n: number): THREE.Group {
 // Blender-authored .glb prototypes, loaded at runtime and cloned per tile.
 // Keys map a model role to its asset; missing keys fall back to procedural geometry.
 type ProtoKey = 'kovil' | 'nagar' | 'quarry' | 'shipyard' | 'warehouse' | 'barracks'
-  | 'elephant' | 'ox' | 'palm' | 'sangamWarrior' | 'sangamSpearman' | 'scholar';
+  | 'elephant' | 'ox' | 'palm' | 'sangamWarrior' | 'sangamSpearman' | 'scholar'
+  | 'sangamWarriorRig' | 'sangamSpearmanRig';
 type Protos = Partial<Record<ProtoKey, THREE.Object3D>>;
 
 // Which draft animal a zone employs (kind implied by zone).
@@ -102,6 +104,69 @@ const easeOutBack = (p: number): number => {
   const c1 = 1.70158, c3 = c1 + 1;
   return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
 };
+
+// ---------------------------------------------------------------------------
+// Procedural character animation. Limbs are pitched around the parent-space
+// axes (via quaternion premultiply) so motion is independent of each part's
+// baked orientation and of the figure's facing.
+// ---------------------------------------------------------------------------
+const _AXQ = new THREE.Quaternion();
+const AX_X = new THREE.Vector3(1, 0, 0);   // side axis → forward/back pitch (walk, chop)
+const AX_Z = new THREE.Vector3(0, 0, 1);   // rock / sway
+
+function applyAxis(node: THREE.Object3D, base: THREE.Quaternion, axis: THREE.Vector3, angle: number) {
+  _AXQ.setFromAxisAngle(axis, angle);
+  node.quaternion.copy(base).premultiply(_AXQ);
+}
+
+type AnimKind = 'guard' | 'animal' | 'worker' | 'sage';
+interface Figure {
+  kind: AnimKind;
+  root: THREE.Object3D;
+  baseY: number;
+  qRoot: THREE.Quaternion;
+  phase: number;
+  body?: THREE.Object3D; armR?: THREE.Object3D; armL?: THREE.Object3D; legL?: THREE.Object3D; legR?: THREE.Object3D;
+  qBody?: THREE.Quaternion; qArmR?: THREE.Quaternion; qArmL?: THREE.Quaternion; qLegL?: THREE.Quaternion; qLegR?: THREE.Quaternion;
+}
+
+function makeFigure(o: THREE.Object3D): Figure {
+  const kind = o.userData.anim as AnimKind;
+  const f: Figure = { kind, root: o, baseY: o.position.y, qRoot: o.quaternion.clone(), phase: Math.random() * 12 };
+  if (kind === 'guard') {
+    const get = (n: string) => o.getObjectByName(n) || undefined;
+    f.body = get('body'); f.armR = get('armR'); f.armL = get('armL'); f.legL = get('legL'); f.legR = get('legR');
+    if (f.body) f.qBody = f.body.quaternion.clone();
+    if (f.armR) f.qArmR = f.armR.quaternion.clone();
+    if (f.armL) f.qArmL = f.armL.quaternion.clone();
+    if (f.legL) f.qLegL = f.legL.quaternion.clone();
+    if (f.legR) f.qLegR = f.legR.quaternion.clone();
+  }
+  return f;
+}
+
+function updateFigure(f: Figure, time: number) {
+  const t = time + f.phase;
+  if (f.kind === 'guard') {
+    if (f.body && f.qBody) applyAxis(f.body, f.qBody, AX_Z, Math.sin(t * 1.3) * 0.04);        // shift weight / rock
+    const step = Math.sin(t * 1.7) * 0.15;
+    if (f.legL && f.qLegL) applyAxis(f.legL, f.qLegL, AX_X, step);                             // march-in-place
+    if (f.legR && f.qLegR) applyAxis(f.legR, f.qLegR, AX_X, -step);
+    if (f.armL && f.qArmL) applyAxis(f.armL, f.qArmL, AX_X, Math.sin(t * 1.7 + 1) * 0.08);     // shield-arm sway
+    const cyc = 4.5, ph = t % cyc;                                                             // periodic attack
+    let chop = Math.sin(t * 1.7) * 0.06;
+    if (ph < 0.5) chop = -Math.sin((ph / 0.5) * Math.PI) * 1.15;                               // weapon chop
+    if (f.armR && f.qArmR) applyAxis(f.armR, f.qArmR, AX_X, chop);
+  } else if (f.kind === 'animal') {
+    f.root.position.y = f.baseY + Math.abs(Math.sin(t * 1.7)) * 0.02;
+    applyAxis(f.root, f.qRoot, AX_Z, Math.sin(t * 1.5) * 0.06);                                // lumbering sway
+  } else if (f.kind === 'worker') {
+    f.root.position.y = f.baseY + Math.abs(Math.sin(t * 3)) * 0.03;                            // busy bob
+  } else {
+    f.root.position.y = f.baseY + Math.sin(t * 1.4) * 0.01;                                    // sage rocks as he writes
+    applyAxis(f.root, f.qRoot, AX_X, Math.sin(t * 0.9) * 0.03);
+  }
+}
 
 // Clone a loaded model prototype and scale it via a wrapper (preserving the
 // model's own transform). Cloned meshes share the prototype's geometry and
@@ -132,6 +197,7 @@ function animalMarkers(n: number, kind: 'elephant' | 'ox', protos: Protos): THRE
     }
     wrap.position.set(Math.cos(a) * 0.4, 0, Math.sin(a) * 0.4);
     wrap.rotation.y = -a + Math.PI / 2;
+    wrap.userData.anim = 'animal';
     g.add(wrap);
   }
   return g;
@@ -140,18 +206,22 @@ function animalMarkers(n: number, kind: 'elephant' | 'ox', protos: Protos): THRE
 // Sangam-age guards standing watch around a barracks (more at higher levels).
 function garrison(protos: Protos, level: number): THREE.Group {
   const g = new THREE.Group();
+  const spear = protos.sangamSpearmanRig ?? protos.sangamSpearman;
+  const warr = protos.sangamWarriorRig ?? protos.sangamWarrior;
   const specs: { proto?: THREE.Object3D; x: number; z: number; ry: number }[] = [
-    { proto: protos.sangamSpearman, x: -0.30, z: 0.28, ry: 0.25 },
-    { proto: protos.sangamWarrior, x: 0.30, z: 0.26, ry: -0.25 },
+    { proto: spear, x: -0.30, z: 0.28, ry: 0.25 },
+    { proto: warr, x: 0.30, z: 0.26, ry: -0.25 },
   ];
-  if (level >= 2) specs.push({ proto: protos.sangamSpearman, x: -0.30, z: -0.26, ry: Math.PI - 0.25 });
-  if (level >= 3) specs.push({ proto: protos.sangamWarrior, x: 0.30, z: -0.28, ry: Math.PI + 0.25 });
+  if (level >= 2) specs.push({ proto: spear, x: -0.30, z: -0.26, ry: Math.PI - 0.25 });
+  if (level >= 3) specs.push({ proto: warr, x: 0.30, z: -0.28, ry: Math.PI + 0.25 });
   for (const s of specs) {
     if (!s.proto) continue;
     const wrap = new THREE.Group();
     wrap.add(cloneProto(s.proto, 0.24));
     wrap.position.set(s.x, 0, s.z);
     wrap.rotation.y = s.ry;
+    // Animate only the rigged models (named limbs); static ones just stand.
+    if (protos.sangamWarriorRig || protos.sangamSpearmanRig) wrap.userData.anim = 'guard';
     g.add(wrap);
   }
   return g;
@@ -185,6 +255,7 @@ function buildStructure(cell: GridCell, protos: Protos): THREE.Group {
         const sage = cloneProto(protos.scholar, 0.30);
         sage.position.set(-0.34, 0, 0.30);
         sage.rotation.y = 0.6;
+        sage.userData.anim = 'sage';
         g.add(sage);
       }
       break;
@@ -312,7 +383,7 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
     const clock = new THREE.Clock();
 
     // Per-cell records. `born` is the spawn time for the grow animation (-1 = already grown).
-    interface Rec { tile: THREE.Mesh; group: THREE.Group; sig: string; water: boolean; type: ZoneType; born: number }
+    interface Rec { tile: THREE.Mesh; group: THREE.Group; sig: string; water: boolean; type: ZoneType; born: number; figures: Figure[] }
     const recs = new Map<string, Rec>();
     const tileMeshes: THREE.Mesh[] = [];
 
@@ -337,7 +408,11 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       if (animate) group.scale.setScalar(0.001);
       scene.add(group);
 
-      recs.set(cell.id, { tile, group, sig: sig(cell), water: cell.type === 'river', type: cell.type, born: animate ? clock.getElapsedTime() : -1 });
+      // Collect animatable figures (tagged with userData.anim) for the tick loop.
+      const figures: Figure[] = [];
+      group.traverse((o) => { if (o.userData.anim) figures.push(makeFigure(o)); });
+
+      recs.set(cell.id, { tile, group, sig: sig(cell), water: cell.type === 'river', type: cell.type, born: animate ? clock.getElapsedTime() : -1, figures });
     };
 
     const reconcile = (g: GridCell[], animateNew = true) => {
@@ -383,9 +458,9 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       ['elephant', '/models/elephant.glb'],
       ['ox', '/models/ox.glb'],
       ['palm', '/models/palm.glb'],
-      ['sangamWarrior', '/models/sangam_warrior.glb'],
-      ['sangamSpearman', '/models/sangam_spearman.glb'],
       ['scholar', '/models/sangam_scholar.glb'],
+      ['sangamWarriorRig', '/models/sangam_warrior_rig.glb'],
+      ['sangamSpearmanRig', '/models/sangam_spearman_rig.glb'],
     ];
     Promise.all(MODELS.map(([key, url]) =>
       loader.loadAsync(url).then((gltf) => {
@@ -473,6 +548,8 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
           const s = 0.5 + 0.5 * Math.sin(t * 1.5 + rec.tile.position.x * 0.7 + rec.tile.position.z);
           m.emissive.setRGB(0.02, 0.08 + 0.05 * s, 0.13 + 0.05 * s);
         }
+        // living characters: guards drill, animals sway, workers bob, sage rocks
+        for (const f of rec.figures) updateFigure(f, t);
       }
 
       // selection ring
