@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { TradeRoute, TradingShip, Resources } from '../types';
 import { Anchor, Compass, ShieldAlert, Sparkles, AlertTriangle, ArrowRight, Play } from 'lucide-react';
 import { audio } from '../utils/audio';
+import { toast } from '../utils/toast';
 
 interface PortCityMiniGameProps {
   resources: Resources;
@@ -14,6 +15,7 @@ interface PortCityMiniGameProps {
   onTradeLoss: (cost: number) => void;
   kadalPiraUnlocked: boolean; // Reduces voyage time
   compassUnlocked: boolean;    // Reduces pirate risk
+  shipyardCount?: number;      // Shipyards in the city discount new vessels
 }
 
 export default function PortCityMiniGame({
@@ -22,7 +24,10 @@ export default function PortCityMiniGame({
   onTradeLoss,
   kadalPiraUnlocked,
   compassUnlocked,
+  shipyardCount = 0,
 }: PortCityMiniGameProps) {
+  // Each shipyard in the Nagara plan discounts a commissioned Kappal.
+  const kappalCost = Math.max(150, 300 - shipyardCount * 50);
   const [ships, setShips] = useState<TradingShip[]>([
     { id: 'ship1', name: 'Chola Kappal Vayu', status: 'idle', routeId: null, timeLeft: 0 },
     { id: 'ship2', name: 'Chola Kappal Agni', status: 'idle', routeId: null, timeLeft: 0 },
@@ -209,9 +214,9 @@ export default function PortCityMiniGame({
   };
 
   const buyKappal = () => {
-    if (resources.aruvam >= 300) {
+    if (resources.aruvam >= kappalCost) {
       audio.playBell();
-      onTradeLoss(300); // Spend wealth
+      onTradeLoss(kappalCost); // Spend wealth
       const newId = `ship${ships.length + 1}`;
       setShips(prev => [
         ...prev,
@@ -227,8 +232,10 @@ export default function PortCityMiniGame({
         `⚓ Shipwright: Commissioned a new heavy imperial trading Kappal! Fleet size increased.`,
         ...prev,
       ]);
+      toast.push('⛴️ New Kappal commissioned to the fleet', { icon: '⛴️', kind: 'gold' });
     } else {
       audio.playDrum(true);
+      toast.push(`Need ${kappalCost} gold to commission a Kappal.`, { icon: '💰', kind: 'warn' });
     }
   };
 
@@ -251,7 +258,8 @@ export default function PortCityMiniGame({
           onClick={buyKappal}
           className="mt-3 md:mt-0 px-4 py-2 rounded bg-[#D2691E]/10 hover:bg-[#D2691E]/20 border border-[#D2691E]/30 text-[#D2691E] text-xs font-bold font-sans flex items-center gap-2 transition cursor-pointer"
         >
-          <Anchor className="w-4 h-4 animate-pulse" /> Commission Kappal (300 Gold)
+          <Anchor className="w-4 h-4 animate-pulse" /> Commission Kappal ({kappalCost} Gold)
+          {shipyardCount > 0 && <span className="text-[9px] bg-emerald-900/60 text-emerald-300 px-1 rounded">−{shipyardCount * 50} shipyard</span>}
         </button>
       </div>
 

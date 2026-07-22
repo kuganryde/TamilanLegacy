@@ -10,16 +10,27 @@ export interface Resources {
   aalavan: number;    // Power / Military Influence
 }
 
-export type ZoneType = 'empty' | 'ur' | 'nagar' | 'kovil' | 'eri' | 'river' | 'quarry';
+export type ZoneType =
+  | 'empty' | 'ur' | 'nagar' | 'kovil' | 'eri' | 'river' | 'quarry'
+  | 'shipyard' | 'warehouse' | 'barracks';
+
+export type AnimalKind = 'elephant' | 'ox' | null;
 
 export interface GridCell {
   id: string;
   row: number;
   col: number;
   type: ZoneType;
-  level: number;       // For building upgrades
+  level: number;       // For building upgrades / field expansion
   hasWater: boolean;   // Eri irrigation link
   assignedWorkers: number;
+  assignedAnimals: number; // Draft animals (kind implied by zone type)
+}
+
+// Owned draft animals available to deploy across the city.
+export interface Livestock {
+  elephants: number;
+  oxen: number;
 }
 
 export interface TradeRoute {

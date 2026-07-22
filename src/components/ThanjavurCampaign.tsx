@@ -50,13 +50,13 @@ export default function ThanjavurCampaign({
   useEffect(() => {
     if (campaignState.currentPhase === 'foundation') {
       const quarries = gridCells.filter(c => c.type === 'quarry');
-      const assignedWorkersToQuarries = quarries.reduce((acc, c) => acc + c.assignedWorkers, 0);
-      
+      // Workers cut stone; deployed elephants haul the megaliths far faster.
+      const quarryLabour = quarries.reduce((acc, c) => acc + c.assignedWorkers * 2 + c.assignedAnimals * 3, 0);
+
       const irrigatedPaddies = gridCells.filter(c => c.type === 'ur' && c.hasWater).length;
 
       onSetCampaignState(prev => {
-        // Gain 5 granite per tick per worker assigned to quarries
-        const nextGranite = Math.min(prev.graniteTarget, prev.graniteCollected + (assignedWorkersToQuarries * 2));
+        const nextGranite = Math.min(prev.graniteTarget, prev.graniteCollected + quarryLabour);
         
         return {
           ...prev,

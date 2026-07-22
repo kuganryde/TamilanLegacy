@@ -4,18 +4,80 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Resources, GridCell, TechNode, CampaignState, ZoneType } from './types';
+import { Resources, GridCell, TechNode, CampaignState, ZoneType, AnimalKind, Livestock } from './types';
 import NagaraGrid from './components/NagaraGrid';
 import PortCityMiniGame from './components/PortCityMiniGame';
 import PalmLeafTechTree from './components/PalmLeafTechTree';
 import ThanjavurCampaign from './components/ThanjavurCampaign';
 import CopperPlateModal from './components/CopperPlateModal';
+import Toaster from './components/Toaster';
 import { audio } from './utils/audio';
-import { 
-  Coins, BookOpen, Heart, Shield, Users, 
-  Volume2, VolumeX, HelpCircle, RefreshCw, 
-  Sparkles, Globe, Compass, Landmark 
+import { toast } from './utils/toast';
+import {
+  Coins, BookOpen, Heart, Shield, Users,
+  Volume2, VolumeX, HelpCircle, RefreshCw,
+  Sparkles, Globe, Compass, Landmark, TrendingUp
 } from 'lucide-react';
+
+// Which draft animal a zone employs (null = none).
+export const animalFor = (type: ZoneType): AnimalKind => {
+  if (type === 'ur') return 'ox';
+  if (type === 'quarry' || type === 'kovil' || type === 'shipyard') return 'elephant';
+  return null;
+};
+
+// Cost (in Aruvam gold) to zone each build type.
+export const ZONE_COST: Partial<Record<ZoneType, number>> = {
+  ur: 50, nagar: 120, kovil: 250, eri: 100,
+  shipyard: 200, warehouse: 150, barracks: 180,
+};
+
+// Pure per-tick income from the whole grid — shared by the game loop and the
+// HUD rate read-out so the numbers the player sees always match what accrues.
+export function computeIncome(
+  grid: GridCell[],
+  opts: { availableWorkers: number; koothu: boolean; raidsActive: boolean },
+): Resources {
+  let aruvam = 0, arivu = 0, anbu = 0, aalavan = 0;
+  arivu += Math.max(1, Math.round(opts.availableWorkers * 0.8)); // idle scholars
+  for (const cell of grid) {
+    const w = cell.assignedWorkers;
+    const a = cell.assignedAnimals;
+    const lvl = Math.max(1, cell.level);
+    switch (cell.type) {
+      case 'ur': {
+        const water = cell.hasWater ? 2 : 1;
+        aruvam += Math.round(w * 8 * water * lvl * (1 + a * 0.35)); // ploughing oxen
+        break;
+      }
+      case 'nagar': {
+        aruvam += Math.round(w * 14 * lvl * (opts.koothu ? 1.5 : 1));
+        aalavan += Math.round(lvl * 0.5);
+        break;
+      }
+      case 'kovil': {
+        anbu += Math.round(w * 10 * lvl * (1 + a * 0.3));           // temple elephants
+        arivu += Math.round(lvl * 2);
+        break;
+      }
+      case 'warehouse':
+        aruvam += Math.round(6 * lvl + w * 3);                      // stored goods traded
+        arivu += 1;
+        break;
+      case 'shipyard':
+        aruvam += Math.round((5 * lvl + w * 4) * (1 + a * 0.25));   // hauling elephants
+        arivu += lvl;
+        break;
+      case 'barracks':
+        aalavan += Math.round(3 * lvl + w * 2);
+        break;
+      default: break;
+    }
+  }
+  aalavan += 1; // slow default gain
+  if (opts.raidsActive) aruvam = Math.round(aruvam * 0.5);
+  return { aruvam, arivu, anbu, aalavan };
+}
 
 // Starting values
 const INITIAL_RESOURCES: Resources = {
@@ -24,6 +86,8 @@ const INITIAL_RESOURCES: Resources = {
   anbu: 10,      // Culture
   aalavan: 30,   // Influence
 };
+
+const INITIAL_LIVESTOCK: Livestock = { elephants: 2, oxen: 3 };
 
 const INITIAL_GRID = (): GridCell[] => {
   const cells: GridCell[] = [];
@@ -51,6 +115,7 @@ const INITIAL_GRID = (): GridCell[] => {
         level: type === 'empty' ? 0 : 1,
         hasWater,
         assignedWorkers: 0,
+        assignedAnimals: 0,
       });
     }
   }
@@ -227,6 +292,7 @@ export default function App() {
   const [grid, setGrid] = useState<GridCell[]>(INITIAL_GRID());
   const [techs, setTechs] = useState<TechNode[]>(INITIAL_TECHS);
   const [campaign, setCampaign] = useState<CampaignState>(INITIAL_CAMPAIGN);
+  const [livestock, setLivestock] = useState<Livestock>(INITIAL_LIVESTOCK);
   const [activeTab, setActiveTab] = useState<'campaign' | 'grid' | 'port' | 'tech'>('campaign');
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -237,11 +303,17 @@ export default function App() {
     const savedGrid = localStorage.getItem('chola_grid');
     const savedTechs = localStorage.getItem('chola_techs');
     const savedCampaign = localStorage.getItem('chola_campaign');
+    const savedLivestock = localStorage.getItem('chola_livestock');
 
     if (savedResources) setResources(JSON.parse(savedResources));
-    if (savedGrid) setGrid(JSON.parse(savedGrid));
+    if (savedGrid) {
+      // Migrate older saves that predate assignedAnimals.
+      const parsed: GridCell[] = JSON.parse(savedGrid);
+      setGrid(parsed.map(c => ({ ...c, assignedAnimals: c.assignedAnimals ?? 0 })));
+    }
     if (savedTechs) setTechs(JSON.parse(savedTechs));
     if (savedCampaign) setCampaign(JSON.parse(savedCampaign));
+    if (savedLivestock) setLivestock(JSON.parse(savedLivestock));
   }, []);
 
   // Save state on modification
@@ -250,13 +322,25 @@ export default function App() {
     localStorage.setItem('chola_grid', JSON.stringify(grid));
     localStorage.setItem('chola_techs', JSON.stringify(techs));
     localStorage.setItem('chola_campaign', JSON.stringify(campaign));
-  }, [resources, grid, techs, campaign]);
+    localStorage.setItem('chola_livestock', JSON.stringify(livestock));
+  }, [resources, grid, techs, campaign, livestock]);
 
   // Determine available and total workers
   const isHerbalRemediesUnlocked = techs.find(t => t.id === 'siddha1')?.unlocked || false;
   const totalWorkers = 12 + (isHerbalRemediesUnlocked ? 3 : 0);
   const assignedWorkers = grid.reduce((acc, cell) => acc + cell.assignedWorkers, 0);
   const availableWorkers = Math.max(0, totalWorkers - assignedWorkers);
+
+  // Draft-animal availability (assigned counts by the animal each zone uses)
+  const assignedElephants = grid.reduce((s, c) => s + (animalFor(c.type) === 'elephant' ? c.assignedAnimals : 0), 0);
+  const assignedOxen = grid.reduce((s, c) => s + (animalFor(c.type) === 'ox' ? c.assignedAnimals : 0), 0);
+  const availableElephants = Math.max(0, livestock.elephants - assignedElephants);
+  const availableOxen = Math.max(0, livestock.oxen - assignedOxen);
+
+  // Building tally for the HUD.
+  const buildingCount = grid.reduce((n, c) =>
+    n + (['nagar', 'kovil', 'warehouse', 'shipyard', 'barracks'].includes(c.type) ? 1 : 0), 0);
+  const shipyardCount = grid.reduce((n, c) => n + (c.type === 'shipyard' ? 1 : 0), 0);
 
   // Active modifiers
   const isSanctuaryHospitalUnlocked = techs.find(t => t.id === 'siddha2')?.unlocked || false;
@@ -266,112 +350,134 @@ export default function App() {
   const isKoothuTheatresUnlocked = techs.find(t => t.id === 'arts2')?.unlocked || false;
   const isRampUnlocked = techs.find(t => t.id === 'vastu1')?.unlocked || false;
 
+  // Live per-tick income shown on the HUD (mirrors the game loop exactly).
+  const incomeRate = computeIncome(grid, {
+    availableWorkers,
+    koothu: isKoothuTheatresUnlocked,
+    raidsActive: campaign.currentPhase === 'shadows' && campaign.activeRaids > 0,
+  });
+
   // Primary Game Ticking Loop (runs every 3 seconds)
   useEffect(() => {
     const interval = setInterval(() => {
-      setResources(prev => {
-        let aruvamIncome = 0;
-        let anbuIncome = 0;
-        let arivuIncome = 0;
-        let aalavanIncome = 0;
-
-        // Idle workers generate Arivu (Knowledge) by reading manuscripts
-        arivuIncome += Math.max(1, Math.round(availableWorkers * 0.8));
-
-        grid.forEach(cell => {
-          if (cell.assignedWorkers > 0) {
-            if (cell.type === 'ur') {
-              // Agricultural Ur Zone
-              const yieldMultiplier = cell.hasWater ? 2.0 : 1.0;
-              aruvamIncome += Math.round(cell.assignedWorkers * 8 * yieldMultiplier);
-            } else if (cell.type === 'nagar') {
-              // Market Nagar Zone
-              const marketMultiplier = isKoothuTheatresUnlocked ? 1.5 : 1.0;
-              aruvamIncome += Math.round(cell.assignedWorkers * 14 * cell.level * marketMultiplier);
-              aalavanIncome += Math.round(cell.level * 0.5); // high density generates influence
-            } else if (cell.type === 'kovil') {
-              // Spiritual Temple Zone
-              anbuIncome += Math.round(cell.assignedWorkers * 10 * cell.level);
-              arivuIncome += Math.round(cell.level * 2);
-            }
-          }
-        });
-
-        // Penalize incomes if bandit raids are active in Phase 3
-        if (campaign.currentPhase === 'shadows' && campaign.activeRaids > 0) {
-          aruvamIncome = Math.round(aruvamIncome * 0.5); // 50% crop losses
-        }
-
-        return {
-          aruvam: prev.aruvam + aruvamIncome,
-          arivu: prev.arivu + arivuIncome,
-          anbu: prev.anbu + anbuIncome,
-          aalavan: Math.min(200, prev.aalavan + aalavanIncome + 1), // slow default gain
-        };
+      const inc = computeIncome(grid, {
+        availableWorkers,
+        koothu: isKoothuTheatresUnlocked,
+        raidsActive: campaign.currentPhase === 'shadows' && campaign.activeRaids > 0,
       });
+      setResources(prev => ({
+        aruvam: prev.aruvam + inc.aruvam,
+        arivu: prev.arivu + inc.arivu,
+        anbu: prev.anbu + inc.anbu,
+        aalavan: Math.min(300, prev.aalavan + inc.aalavan),
+      }));
     }, 3000);
 
     return () => clearInterval(interval);
   }, [grid, availableWorkers, isKoothuTheatresUnlocked, campaign.currentPhase, campaign.activeRaids]);
 
+  // Labels + icons for progress toasts.
+  const ZONE_LABEL: Partial<Record<ZoneType, [string, string]>> = {
+    ur: ['Paddy field', '🌾'], nagar: ['Market', '🏬'], kovil: ['Temple', '🛕'],
+    eri: ['Eri reservoir', '💧'], shipyard: ['Shipyard', '⛴️'],
+    warehouse: ['Warehouse', '🏚️'], barracks: ['Barracks', '🛡️'],
+  };
+
   // Handle cell zoning updates
   const handleUpdateCell = (id: string, type: ZoneType) => {
-    let cost = 0;
-    if (type === 'ur') cost = isSanctuaryHospitalUnlocked ? 25 : 50;
-    if (type === 'nagar') cost = 120;
-    if (type === 'kovil') cost = 250;
-    if (type === 'eri') cost = 100;
+    let cost = ZONE_COST[type] ?? 0;
+    if (type === 'ur' && isSanctuaryHospitalUnlocked) cost = 25;
 
-    if (resources.aruvam < cost) return;
+    if (resources.aruvam < cost) {
+      audio.playDrum(true);
+      toast.push(`Need ${cost} gold to build the ${ZONE_LABEL[type]?.[0] ?? 'structure'}.`, { icon: '💰', kind: 'warn' });
+      return;
+    }
 
     setResources(prev => ({ ...prev, aruvam: prev.aruvam - cost }));
     setGrid(prev => {
-      const nextGrid = prev.map(cell => {
-        if (cell.id === id) {
-          return {
-            ...cell,
-            type,
-            level: 1,
-            assignedWorkers: 0, // Reset workers on zone change
-          };
-        }
-        return cell;
-      });
+      const nextGrid = prev.map(cell =>
+        cell.id === id
+          ? { ...cell, type, level: 1, assignedWorkers: 0, assignedAnimals: 0 }
+          : cell,
+      );
       return recalculateWater(nextGrid);
     });
+    const [label, icon] = ZONE_LABEL[type] ?? ['Structure', '🏗️'];
+    audio.playBell();
+    toast.push(`${label} built — ${cost} gold spent.`, { icon, kind: 'gold' });
   };
 
-  // Upgrades
+  // Upgrade / expand a building or field.
   const handleUpgradeCell = (id: string) => {
-    setGrid(prev => {
-      return prev.map(cell => {
-        if (cell.id === id) {
-          const cost = cell.level * 200;
-          if (resources.aruvam >= cost) {
-            setResources(r => ({ ...r, aruvam: r.aruvam - cost }));
-            return {
-              ...cell,
-              level: Math.min(3, cell.level + 1),
-            };
-          }
-        }
-        return cell;
-      });
-    });
+    const cell = grid.find(c => c.id === id);
+    if (!cell || cell.level >= 3) return;
+    const cost = cell.level * 200;
+    if (resources.aruvam < cost) {
+      audio.playDrum(true);
+      toast.push(`Need ${cost} gold to ${cell.type === 'ur' ? 'expand this field' : 'upgrade'}.`, { icon: '💰', kind: 'warn' });
+      return;
+    }
+    const nextLvl = Math.min(3, cell.level + 1);
+    setResources(prev => ({ ...prev, aruvam: prev.aruvam - cost }));
+    setGrid(prev => prev.map(c => (c.id === id ? { ...c, level: nextLvl } : c)));
+    audio.playBell();
+    const verb = cell.type === 'ur' ? 'Field expanded' : `${ZONE_LABEL[cell.type]?.[0] ?? 'Structure'} upgraded`;
+    toast.push(`${verb} → Level ${nextLvl}`, { icon: '⬆️', kind: 'gold' });
   };
 
   // Assign workers to specific cell
   const handleAssignWorkers = (id: string, change: number) => {
-    setGrid(prev => {
-      return prev.map(cell => {
-        if (cell.id === id) {
-          const current = cell.assignedWorkers;
-          const nextVal = Math.max(0, current + change);
-          return { ...cell, assignedWorkers: nextVal };
-        }
-        return cell;
-      });
-    });
+    setGrid(prev => prev.map(cell => {
+      if (cell.id !== id) return cell;
+      return { ...cell, assignedWorkers: Math.max(0, cell.assignedWorkers + change) };
+    }));
+    if (change > 0) toast.push('👷 Worker deployed', { icon: '👷', kind: 'success' });
+  };
+
+  // Assign draft animals (elephants / oxen) to a cell, drawing from the pool.
+  const handleAssignAnimals = (id: string, change: number) => {
+    const cell = grid.find(c => c.id === id);
+    if (!cell) return;
+    const kind = animalFor(cell.type);
+    if (!kind) return;
+    if (change > 0) {
+      const avail = kind === 'elephant' ? availableElephants : availableOxen;
+      if (avail <= 0) {
+        audio.playDrum(true);
+        toast.push(`No idle ${kind === 'elephant' ? 'elephants' : 'oxen'} — acquire more first.`, { icon: kind === 'elephant' ? '🐘' : '🐂', kind: 'warn' });
+        return;
+      }
+    }
+    const next = Math.max(0, cell.assignedAnimals + change);
+    if (next === cell.assignedAnimals) return;
+    setGrid(prev => prev.map(c => (c.id === id ? { ...c, assignedAnimals: next } : c)));
+    audio.playDrum(false);
+    if (change > 0) toast.push(`${kind === 'elephant' ? '🐘 Elephant' : '🐂 Ox'} deployed`, { icon: kind === 'elephant' ? '🐘' : '🐂', kind: 'success' });
+  };
+
+  // Acquire draft animals from the royal stables.
+  const buyElephant = () => {
+    if (resources.aruvam < 250 || resources.aalavan < 10) {
+      audio.playDrum(true);
+      toast.push('A war elephant costs 250 gold + 10 power.', { icon: '🐘', kind: 'warn' });
+      return;
+    }
+    setResources(p => ({ ...p, aruvam: p.aruvam - 250, aalavan: p.aalavan - 10 }));
+    setLivestock(p => ({ ...p, elephants: p.elephants + 1 }));
+    audio.playBell();
+    toast.push('🐘 War elephant acquired from the royal stables', { icon: '🐘', kind: 'gold' });
+  };
+  const buyOx = () => {
+    if (resources.aruvam < 120) {
+      audio.playDrum(true);
+      toast.push('A plough ox costs 120 gold.', { icon: '🐂', kind: 'warn' });
+      return;
+    }
+    setResources(p => ({ ...p, aruvam: p.aruvam - 120 }));
+    setLivestock(p => ({ ...p, oxen: p.oxen + 1 }));
+    audio.playBell();
+    toast.push('🐂 Plough oxen added to the herd', { icon: '🐂', kind: 'gold' });
   };
 
   // Spend generic resources validator
@@ -418,6 +524,7 @@ export default function App() {
     if (!techNode || techNode.unlocked) return;
     setTechs(prev => prev.map(t => (t.id === id ? { ...t, unlocked: true } : t)));
     setResources(prev => ({ ...prev, arivu: Math.max(0, prev.arivu - techNode.cost) }));
+    toast.push(`📜 Researched: ${techNode.name}`, { icon: '✨', kind: 'gold' });
   };
 
   const handleToggleMute = () => {
@@ -432,8 +539,10 @@ export default function App() {
       setGrid(INITIAL_GRID());
       setTechs(INITIAL_TECHS);
       setCampaign(INITIAL_CAMPAIGN);
+      setLivestock(INITIAL_LIVESTOCK);
       setActiveTab('campaign');
       localStorage.clear();
+      toast.push('Empire reset to Year 985 AD.', { icon: '🔄', kind: 'info' });
     }
   };
 
@@ -504,52 +613,57 @@ export default function App() {
       </header>
 
       {/* RESOURCE PILLARS HUD */}
-      <section id="resources-hud" className="grid grid-cols-2 md:grid-cols-5 gap-3 p-6 bg-[#1C1713] border-b-2 border-[#D2691E]/30">
-        
-        {/* Aruvam (Wealth) */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-[#D4AF37] flex items-center justify-center text-black text-lg font-bold shadow-md">🪙</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aruvam (Wealth)</div>
-            <div className="text-base font-mono font-bold text-[#D4AF37]">{resources.aruvam}</div>
-          </div>
-        </div>
+      <section id="resources-hud" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 p-6 bg-[#1C1713] border-b-2 border-[#D2691E]/30">
 
-        {/* Arivu (Knowledge) */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-[#4A90E2] flex items-center justify-center text-white text-lg font-bold shadow-md">👁️</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Arivu (Knowledge)</div>
-            <div className="text-base font-mono font-bold text-[#4A90E2]">{resources.arivu}</div>
+        {([
+          { key: 'aruvam', label: 'Aruvam (Wealth)', icon: '🪙', chip: 'bg-[#D4AF37]', text: 'text-[#D4AF37]', rate: incomeRate.aruvam },
+          { key: 'arivu', label: 'Arivu (Knowledge)', icon: '👁️', chip: 'bg-[#4A90E2]', text: 'text-[#4A90E2]', rate: incomeRate.arivu },
+          { key: 'anbu', label: 'Anbu (Devotion)', icon: '🪷', chip: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', rate: incomeRate.anbu },
+          { key: 'aalavan', label: 'Aalavan (Power)', icon: '⚔️', chip: 'bg-[#8B0000]', text: 'text-red-500', rate: incomeRate.aalavan },
+        ] as const).map(r => (
+          <div key={r.key} className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title={`${r.label}: +${r.rate} every 3s`}>
+            <div className={`w-8 h-8 rounded ${r.chip} flex items-center justify-center text-black text-lg font-bold shadow-md`}>{r.icon}</div>
+            <div className="min-w-0">
+              <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400 truncate">{r.label}</div>
+              <div className="flex items-baseline gap-1.5">
+                <span className={`text-base font-mono font-bold ${r.text}`}>{(resources[r.key as keyof Resources] as number).toLocaleString()}</span>
+                <span className={`text-[10px] font-mono font-bold flex items-center gap-0.5 ${r.rate > 0 ? 'text-emerald-400' : 'text-stone-600'}`}>
+                  <TrendingUp className="w-2.5 h-2.5" />+{r.rate}
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
+        ))}
 
-        {/* Anbu (Culture/Devotion) */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-[#FF6B6B] flex items-center justify-center text-white text-lg font-bold shadow-md">🪷</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Anbu (Devotion)</div>
-            <div className="text-base font-mono font-bold text-[#FF6B6B]">{resources.anbu}</div>
-          </div>
-        </div>
-
-        {/* Aalavan (Power/Soldiers) */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-[#8B0000] flex items-center justify-center text-white text-lg font-bold shadow-md">⚔️</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aalavan (Power)</div>
-            <div className="text-base font-mono font-bold text-red-500">{resources.aalavan}</div>
-          </div>
-        </div>
-
-        {/* Workers Status */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3 col-span-2 md:col-span-1">
+        {/* Workers */}
+        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Idle / total workers">
           <div className="w-8 h-8 rounded bg-[#D2691E] flex items-center justify-center text-black text-lg font-bold shadow-md">👷</div>
           <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers (Idle/Total)</div>
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers</div>
             <div className="text-sm font-mono font-bold text-stone-200">
               <span className="text-[#D2691E] text-base">{availableWorkers}</span> / {totalWorkers}
             </div>
+          </div>
+        </div>
+
+        {/* Livestock */}
+        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Idle / total draft animals">
+          <div className="w-8 h-8 rounded bg-[#7f7d79] flex items-center justify-center text-lg shadow-md">🐘</div>
+          <div className="font-mono leading-tight">
+            <div className="text-[9px] uppercase tracking-wider text-stone-400">Livestock</div>
+            <div className="text-xs font-bold text-stone-200 flex gap-2">
+              <span title="Elephants">🐘 <span className="text-[#D4AF37]">{availableElephants}</span>/{livestock.elephants}</span>
+              <span title="Oxen">🐂 <span className="text-[#D4AF37]">{availableOxen}</span>/{livestock.oxen}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Buildings */}
+        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Constructed buildings">
+          <div className="w-8 h-8 rounded bg-[#a8432f] flex items-center justify-center text-lg shadow-md">🏛️</div>
+          <div className="font-mono leading-tight">
+            <div className="text-[9px] uppercase tracking-wider text-stone-400">Buildings</div>
+            <div className="text-base font-bold text-stone-200">{buildingCount}</div>
           </div>
         </div>
 
@@ -629,9 +743,15 @@ export default function App() {
             onUpdateCell={handleUpdateCell}
             onUpgradeCell={handleUpgradeCell}
             onAssignWorkers={handleAssignWorkers}
+            onAssignAnimals={handleAssignAnimals}
+            onBuyElephant={buyElephant}
+            onBuyOx={buyOx}
             resources={resources}
             availableWorkers={availableWorkers}
             totalWorkers={totalWorkers}
+            availableElephants={availableElephants}
+            availableOxen={availableOxen}
+            livestock={livestock}
           />
         )}
 
@@ -642,6 +762,7 @@ export default function App() {
             onTradeLoss={handleTradeLoss}
             kadalPiraUnlocked={isKappalUnlocked}
             compassUnlocked={isCompassUnlocked}
+            shipyardCount={shipyardCount}
           />
         )}
 
@@ -702,6 +823,9 @@ export default function App() {
           </div>
         </div>
       </CopperPlateModal>
+
+      {/* Global micro-interaction / progress notifications */}
+      <Toaster />
 
     </div>
   );
