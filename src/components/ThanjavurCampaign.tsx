@@ -17,6 +17,8 @@ interface ThanjavurCampaignProps {
   onEarnResources: (earned: Partial<Resources>) => void;
   rampTechUnlocked: boolean; // Pre-requisite for Phase 2
   poetGuildUnlocked: boolean; // Modifier for Phase 4
+  armyStrengthValue: number;  // Standing army strength (Sangam units)
+  onConsumeDefender: () => boolean; // Spend one unit to defend; false if none
 }
 
 export default function ThanjavurCampaign({
@@ -28,6 +30,8 @@ export default function ThanjavurCampaign({
   onEarnResources,
   rampTechUnlocked,
   poetGuildUnlocked,
+  armyStrengthValue,
+  onConsumeDefender,
 }: ThanjavurCampaignProps) {
 
   const [ropeBreaksCount, setRopeBreaksCount] = useState<number>(0);
@@ -216,8 +220,10 @@ export default function ThanjavurCampaign({
 
   // Shadow catch controls
   const deploySoldiers = (type: 'arrest' | 'defend') => {
-    if (resources.aalavan >= 15) {
-      onSpendResources({ aalavan: 15 });
+    // A standing Sangam unit answers first (free); otherwise pay 15 Aalavan.
+    const usedUnit = onConsumeDefender();
+    if (usedUnit || resources.aalavan >= 15) {
+      if (!usedUnit) onSpendResources({ aalavan: 15 });
       audio.playDrum(true); // Deep martial beats
 
       onSetCampaignState(prev => {
@@ -243,7 +249,7 @@ export default function ThanjavurCampaign({
       });
     } else {
       audio.playDrum(true);
-      setActiveMessage("❌ Failed: You do not possess enough Aalavan (Power/Soldiers) to secure patrols!");
+      setActiveMessage("❌ Failed: No standing troops and not enough Aalavan (need 15). Recruit units at the Padai War Council!");
     }
   };
 
@@ -526,9 +532,15 @@ export default function ThanjavurCampaign({
                 Chalukya saboteurs are attempting to disrupt the upcoming consecration! Deploy **Aalavan (Military Force)** to secure the zones.
               </p>
             </div>
-            <div className="bg-[#1C1713] px-3 py-1.5 rounded text-xs border border-[#D2691E]/30 flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#FF6B6B] animate-pulse" />
-              <span>Available Aalavan: <strong className="text-red-500 font-mono">{resources.aalavan}</strong></span>
+            <div className="flex flex-col gap-1.5">
+              <div className="bg-[#1C1713] px-3 py-1.5 rounded text-xs border border-[#D2691E]/30 flex items-center gap-2">
+                <Users className="w-4 h-4 text-[#FF6B6B] animate-pulse" />
+                <span>Available Aalavan: <strong className="text-red-500 font-mono">{resources.aalavan}</strong></span>
+              </div>
+              <div className="bg-[#1C1713] px-3 py-1.5 rounded text-xs border border-[#D2691E]/30 flex items-center gap-2">
+                <span>⚔️</span>
+                <span>Standing Army: <strong className="text-[#D4AF37] font-mono">{armyStrengthValue}</strong> str <span className="text-stone-500">(spent before Aalavan)</span></span>
+              </div>
             </div>
           </div>
 

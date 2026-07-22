@@ -33,6 +33,10 @@ export interface Livestock {
   oxen: number;
 }
 
+// Era 1 (Sangam Age) military roster.
+export type UnitKind = 'warrior' | 'archer' | 'spearman' | 'cavalry';
+export type Army = Record<UnitKind, number>;
+
 export interface TradeRoute {
   id: string;
   name: string;

@@ -4,13 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Resources, GridCell, TechNode, CampaignState, ZoneType, AnimalKind, Livestock } from './types';
+import { Resources, GridCell, TechNode, CampaignState, ZoneType, AnimalKind, Livestock, Army, UnitKind } from './types';
 import NagaraGrid from './components/NagaraGrid';
 import PortCityMiniGame from './components/PortCityMiniGame';
 import PalmLeafTechTree from './components/PalmLeafTechTree';
 import ThanjavurCampaign from './components/ThanjavurCampaign';
 import CopperPlateModal from './components/CopperPlateModal';
 import Toaster from './components/Toaster';
+import WarCouncil from './components/WarCouncil';
+import { UNIT_META, INITIAL_ARMY, UNIT_ORDER, armyStrength } from './data/units';
 import { audio } from './utils/audio';
 import { toast } from './utils/toast';
 import {
@@ -293,7 +295,8 @@ export default function App() {
   const [techs, setTechs] = useState<TechNode[]>(INITIAL_TECHS);
   const [campaign, setCampaign] = useState<CampaignState>(INITIAL_CAMPAIGN);
   const [livestock, setLivestock] = useState<Livestock>(INITIAL_LIVESTOCK);
-  const [activeTab, setActiveTab] = useState<'campaign' | 'grid' | 'port' | 'tech'>('campaign');
+  const [army, setArmy] = useState<Army>(INITIAL_ARMY);
+  const [activeTab, setActiveTab] = useState<'campaign' | 'grid' | 'port' | 'tech' | 'army'>('campaign');
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
@@ -304,6 +307,7 @@ export default function App() {
     const savedTechs = localStorage.getItem('chola_techs');
     const savedCampaign = localStorage.getItem('chola_campaign');
     const savedLivestock = localStorage.getItem('chola_livestock');
+    const savedArmy = localStorage.getItem('chola_army');
 
     if (savedResources) setResources(JSON.parse(savedResources));
     if (savedGrid) {
@@ -314,6 +318,7 @@ export default function App() {
     if (savedTechs) setTechs(JSON.parse(savedTechs));
     if (savedCampaign) setCampaign(JSON.parse(savedCampaign));
     if (savedLivestock) setLivestock(JSON.parse(savedLivestock));
+    if (savedArmy) setArmy({ ...INITIAL_ARMY, ...JSON.parse(savedArmy) });
   }, []);
 
   // Save state on modification
@@ -323,7 +328,8 @@ export default function App() {
     localStorage.setItem('chola_techs', JSON.stringify(techs));
     localStorage.setItem('chola_campaign', JSON.stringify(campaign));
     localStorage.setItem('chola_livestock', JSON.stringify(livestock));
-  }, [resources, grid, techs, campaign, livestock]);
+    localStorage.setItem('chola_army', JSON.stringify(army));
+  }, [resources, grid, techs, campaign, livestock, army]);
 
   // Determine available and total workers
   const isHerbalRemediesUnlocked = techs.find(t => t.id === 'siddha1')?.unlocked || false;
@@ -341,6 +347,8 @@ export default function App() {
   const buildingCount = grid.reduce((n, c) =>
     n + (['nagar', 'kovil', 'warehouse', 'shipyard', 'barracks'].includes(c.type) ? 1 : 0), 0);
   const shipyardCount = grid.reduce((n, c) => n + (c.type === 'shipyard' ? 1 : 0), 0);
+  const barracksCount = grid.reduce((n, c) => n + (c.type === 'barracks' ? 1 : 0), 0);
+  const militaryStrength = armyStrength(army);
 
   // Active modifiers
   const isSanctuaryHospitalUnlocked = techs.find(t => t.id === 'siddha2')?.unlocked || false;
@@ -480,6 +488,35 @@ export default function App() {
     toast.push('🐂 Plough oxen added to the herd', { icon: '🐂', kind: 'gold' });
   };
 
+  // Recruit a Sangam-age unit (requires a barracks; costs Aalavan + gold).
+  const recruitUnit = (kind: UnitKind) => {
+    if (barracksCount < 1) {
+      audio.playDrum(true);
+      toast.push('Build a Padai Veedu (Barracks) before recruiting.', { icon: '🛡️', kind: 'warn' });
+      return;
+    }
+    const u = UNIT_META[kind];
+    if (resources.aalavan < u.cost.aalavan || resources.aruvam < u.cost.aruvam) {
+      audio.playDrum(true);
+      toast.push(`Need ${u.cost.aalavan} power + ${u.cost.aruvam} gold for a ${u.name}.`, { icon: u.icon, kind: 'warn' });
+      return;
+    }
+    setResources(p => ({ ...p, aalavan: p.aalavan - u.cost.aalavan, aruvam: p.aruvam - u.cost.aruvam }));
+    setArmy(p => ({ ...p, [kind]: p[kind] + 1 }));
+    audio.playBell();
+    toast.push(`${u.icon} ${u.name} (${u.tamil}) mustered to the army`, { icon: u.icon, kind: 'gold' });
+  };
+
+  // Spend one standing unit to defend the city in Phase 3 (cheapest first).
+  const consumeDefender = (): boolean => {
+    const order: UnitKind[] = ['spearman', 'warrior', 'archer', 'cavalry'];
+    const kind = order.find(k => army[k] > 0);
+    if (!kind) return false;
+    setArmy(p => ({ ...p, [kind]: Math.max(0, p[kind] - 1) }));
+    toast.push(`${UNIT_META[kind].icon} ${UNIT_META[kind].name} answered the city's defence`, { icon: UNIT_META[kind].icon, kind: 'info' });
+    return true;
+  };
+
   // Spend generic resources validator
   const handleSpendResources = (cost: Partial<Resources>): boolean => {
     let possible = true;
@@ -540,6 +577,7 @@ export default function App() {
       setTechs(INITIAL_TECHS);
       setCampaign(INITIAL_CAMPAIGN);
       setLivestock(INITIAL_LIVESTOCK);
+      setArmy(INITIAL_ARMY);
       setActiveTab('campaign');
       localStorage.clear();
       toast.push('Empire reset to Year 985 AD.', { icon: '🔄', kind: 'info' });
@@ -720,6 +758,18 @@ export default function App() {
           📜 Olai Chuvadi Technologies
         </button>
 
+        <button
+          id="tab-army"
+          onClick={() => { audio.playYazh(440.00); setActiveTab('army'); }}
+          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+            activeTab === 'army'
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold'
+              : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
+          }`}
+        >
+          ⚔️ Padai War Council
+        </button>
+
       </nav>
 
       {/* CORE DISPLAY STAGE */}
@@ -734,6 +784,17 @@ export default function App() {
             onEarnResources={handleEarnResources}
             rampTechUnlocked={isRampUnlocked}
             poetGuildUnlocked={isPoetGuildUnlocked}
+            armyStrengthValue={militaryStrength}
+            onConsumeDefender={consumeDefender}
+          />
+        )}
+
+        {activeTab === 'army' && (
+          <WarCouncil
+            army={army}
+            resources={resources}
+            barracksCount={barracksCount}
+            onRecruit={recruitUnit}
           />
         )}
 

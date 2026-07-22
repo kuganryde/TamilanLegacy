@@ -79,7 +79,8 @@ function workerMarkers(n: number): THREE.Group {
 
 // Blender-authored .glb prototypes, loaded at runtime and cloned per tile.
 // Keys map a model role to its asset; missing keys fall back to procedural geometry.
-type ProtoKey = 'kovil' | 'nagar' | 'quarry' | 'shipyard' | 'warehouse' | 'barracks' | 'elephant' | 'ox' | 'palm';
+type ProtoKey = 'kovil' | 'nagar' | 'quarry' | 'shipyard' | 'warehouse' | 'barracks'
+  | 'elephant' | 'ox' | 'palm' | 'sangamWarrior' | 'sangamSpearman';
 type Protos = Partial<Record<ProtoKey, THREE.Object3D>>;
 
 // Which draft animal a zone employs (kind implied by zone).
@@ -131,6 +132,26 @@ function animalMarkers(n: number, kind: 'elephant' | 'ox', protos: Protos): THRE
     }
     wrap.position.set(Math.cos(a) * 0.4, 0, Math.sin(a) * 0.4);
     wrap.rotation.y = -a + Math.PI / 2;
+    g.add(wrap);
+  }
+  return g;
+}
+
+// Sangam-age guards standing watch around a barracks (more at higher levels).
+function garrison(protos: Protos, level: number): THREE.Group {
+  const g = new THREE.Group();
+  const specs: { proto?: THREE.Object3D; x: number; z: number; ry: number }[] = [
+    { proto: protos.sangamSpearman, x: -0.30, z: 0.28, ry: 0.25 },
+    { proto: protos.sangamWarrior, x: 0.30, z: 0.26, ry: -0.25 },
+  ];
+  if (level >= 2) specs.push({ proto: protos.sangamSpearman, x: -0.30, z: -0.26, ry: Math.PI - 0.25 });
+  if (level >= 3) specs.push({ proto: protos.sangamWarrior, x: 0.30, z: -0.28, ry: Math.PI + 0.25 });
+  for (const s of specs) {
+    if (!s.proto) continue;
+    const wrap = new THREE.Group();
+    wrap.add(cloneProto(s.proto, 0.24));
+    wrap.position.set(s.x, 0, s.z);
+    wrap.rotation.y = s.ry;
     g.add(wrap);
   }
   return g;
@@ -189,6 +210,7 @@ function buildStructure(cell: GridCell, protos: Protos): THREE.Group {
     case 'barracks':
       if (protos.barracks) g.add(cloneProto(protos.barracks, 0.84 + (lvl - 1) * 0.12));
       else { g.add(box(0.6, 0.34, 0.6, COL.stone, 0)); g.add(box(0.1, 0.12, 0.02, 0x9c2b1e, 0.44)); }
+      g.add(garrison(protos, lvl));   // Sangam guards on watch
       break;
     default:
       // Scatter decorative palms on a fraction of empty grass tiles.
@@ -355,6 +377,8 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       ['elephant', '/models/elephant.glb'],
       ['ox', '/models/ox.glb'],
       ['palm', '/models/palm.glb'],
+      ['sangamWarrior', '/models/sangam_warrior.glb'],
+      ['sangamSpearman', '/models/sangam_spearman.glb'],
     ];
     Promise.all(MODELS.map(([key, url]) =>
       loader.loadAsync(url).then((gltf) => {
