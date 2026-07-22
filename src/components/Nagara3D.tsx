@@ -80,7 +80,7 @@ function workerMarkers(n: number): THREE.Group {
 // Blender-authored .glb prototypes, loaded at runtime and cloned per tile.
 // Keys map a model role to its asset; missing keys fall back to procedural geometry.
 type ProtoKey = 'kovil' | 'nagar' | 'quarry' | 'shipyard' | 'warehouse' | 'barracks'
-  | 'elephant' | 'ox' | 'palm' | 'sangamWarrior' | 'sangamSpearman';
+  | 'elephant' | 'ox' | 'palm' | 'sangamWarrior' | 'sangamSpearman' | 'scholar';
 type Protos = Partial<Record<ProtoKey, THREE.Object3D>>;
 
 // Which draft animal a zone employs (kind implied by zone).
@@ -181,6 +181,12 @@ function buildStructure(cell: GridCell, protos: Protos): THREE.Group {
     case 'kovil':
       if (protos.kovil) g.add(cloneProto(protos.kovil, 0.86 + (lvl - 1) * 0.18));
       else g.add(gopuram(0.85 + (lvl - 1) * 0.22));
+      if (protos.scholar) {   // a Pulavar sage studies at the temple
+        const sage = cloneProto(protos.scholar, 0.30);
+        sage.position.set(-0.34, 0, 0.30);
+        sage.rotation.y = 0.6;
+        g.add(sage);
+      }
       break;
     case 'eri': {
       g.add(box(0.9, 0.12, 0.9, COL.stone, 0));
@@ -379,6 +385,7 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       ['palm', '/models/palm.glb'],
       ['sangamWarrior', '/models/sangam_warrior.glb'],
       ['sangamSpearman', '/models/sangam_spearman.glb'],
+      ['scholar', '/models/sangam_scholar.glb'],
     ];
     Promise.all(MODELS.map(([key, url]) =>
       loader.loadAsync(url).then((gltf) => {
