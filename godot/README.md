@@ -1,80 +1,73 @@
-# Tamilan Legacy — Godot rebuild (scaffold)
+# Tamilan Legacy — Godot RTS (GDScript)
 
-A starting point for rebuilding **Tamilan Legacy** in **Godot 4.3 (mono / C#)**,
-reusing the Blender asset library from the web version.
+An **Age-of-Empires-style RTS** rebuild of Tamilan Legacy in **Godot 4.3
+(GDScript, standard build)**, reusing the Blender asset library from the web
+version. Written in GDScript specifically so it can **export to the web** —
+Godot's C#/.NET target cannot export to HTML5, GDScript can.
 
-> ⚠️ **Untested scaffold.** This was generated in a headless environment with
-> no Godot/.NET installed, so **nothing here has been compiled or run**. Open it
-> in the Godot editor to import the models, build the C# assembly, and verify.
-> Expect to fix small issues on first open — that's normal for a blind scaffold.
+> ⚠️ **Authored headlessly.** These scripts were written without a Godot editor
+> to run them, so treat the first editor open / first CI run as the real test.
+> Expect small fixes. The CI pipeline (`.github/workflows/godot-web.yml`) is the
+> live compile-and-export check.
 
 ## Prerequisites
-- **Godot 4.3+ — .NET/mono edition** (the C# build; GDScript-only won't compile C#)
-- **.NET 8 SDK**
+- **Godot 4.3 — standard build** (NOT the .NET/mono build; this is GDScript)
 
-## Open & run
+## Open & run locally
 ```bash
-# from this folder
-godot-cli build .        # optional: dotnet build so the C# assembly exists
-godot-cli open .         # or just open project.godot in the Godot editor
+# open this folder's project.godot in Godot 4.3, or:
+godot --path godot            # run the game headlessly-launched editor
 ```
-On first open Godot imports every `assets/models/*.glb` (generates `.import`
-files) and builds the C# project. Press **F5 / Play** — `scenes/Main.tscn` runs
-`scripts/GameRoot.cs`, which sets up an orthographic isometric camera + sun and
-drops a showcase of the models onto a ground plane.
+On first open Godot imports every `assets/models/*.glb`. Press **F5 / Play** —
+`scenes/Main.tscn` runs `scripts/GameRoot.gd`.
+
+## Controls
+- **Pan** WASD / arrows   **Rotate** Q / E   **Zoom** wheel
+- **Select** left-click   **Box-select** left-drag
+- **Move** right-click ground   **Attack** right-click an enemy
+- **Gather** select villagers (amber rings), right-click a resource node
+- **Control groups** Ctrl+1–9 assign, 1–9 recall
+
+## Playing on the web
+Every push to `main` that touches `godot/` triggers `.github/workflows/godot-web.yml`,
+which exports an HTML5 build and deploys it to **GitHub Pages**. One-time setup:
+enable Pages with **Settings → Pages → Build and deployment → Source: GitHub
+Actions**. The game then lives at `https://<user>.github.io/<repo>/`.
+
+The export is **single-threaded** (`variant/thread_support=false`) so it runs on
+GitHub Pages without cross-origin-isolation headers. If the page ever errors on
+`SharedArrayBuffer`, that toggle (or a COOP/COEP service worker) is the fix.
 
 ## What's here
 ```
-project.godot                 # Godot 4.3, C#, main scene + GameState autoload
-tamilanlegacy-godot.csproj    # Godot.NET.Sdk 4.3.0, net8.0
-scenes/Main.tscn              # root Node3D + GameRoot.cs
-scripts/GameRoot.cs           # camera + sun + environment; hosts the Board
-scripts/Board.cs              # renders the GameState grid (tiles + building models)
-scripts/GameState.cs          # autoload singleton: grid, ComputeIncome(), 3s economy tick
-scripts/Types.cs              # ZoneType, GridCell, Pillars (4 resources), Livestock, Army
+project.godot                 # Godot 4.3, GDScript, GL Compatibility renderer (WebGL2)
+export_presets.cfg            # "Web" HTML5 export preset
+scenes/Main.tscn              # root Node3D → GameRoot.gd
+scripts/
+  GameEnums.gd                # ZoneType / AnimalKind / ResourceKind enums
+  GameState.gd  (autoload)    # city grid + ComputeIncome + 3s tick (+ inner data classes)
+  MatchEconomy.gd (autoload)  # RTS resource ledger (Food/Wood/Stone/Gold) + population
+  GameRoot.gd                 # world setup: env, sun, navmesh, board, camera, spawns, HUD
+  Board.gd                    # renders the GameState grid (tiles + building .glb)
+  RtsCamera.gd                # orthographic pan / rotate / zoom rig
+  Unit.gd                     # base actor: select ring, HP bar, nav, combat brain
+  Villager.gd                 # extends Unit; gather state machine (M4)
+  ResourceNode.gd / DropOff.gd# gatherable nodes + drop-off building
+  SelectionManager.gd         # click/drag select, right-click move/attack/gather, groups
+  SelectionBox.gd             # drag-rectangle overlay
+  ResourceHud.gd              # top resource/pop bar
 assets/models/*.glb           # 16 models ported verbatim from the web game
 ```
 
-**Implemented so far:** the core data model + economy loop is ported —
-`GameState` (autoload) holds an 8×8 grid, computes per-tick income exactly like
-the web `computeIncome()`, and ticks every 3s; `Board` draws the grid as tiles +
-`.glb` buildings and rebuilds on change. A small starter city is seeded so income
-flows immediately. Still to do: input/selection, build UI/HUD, workers & animals
-UI, tabs (Port/Tech/War Council), audio, and animation (see roadmap below).
+Milestones **M0–M4** are implemented (board & economy, RTS control loop, navmesh
+pathfinding + box-select, combat + control groups, villager gathering). See
+`RTS_ROADMAP.md`.
 
 ## Why the asset reuse is a big deal
-Godot imports **glTF (.glb) natively**, so the entire model library — gopuram,
-market, warehouse, shipyard, barracks, quarry, elephant, ox, palm, and the
-Sangam warrior / archer / spearman / cavalry / scholar (plus the rigged
-warrior/spearman) — transfers **directly**, with materials intact. No
-re-modelling. That's the biggest head start a port could ask for.
-
-## Porting roadmap (web → Godot)
-
-| Web (React + Three.js) | Godot (C#) approach |
-|---|---|
-| `Nagara3D.tsx` board + orbit/zoom | `GameRoot` Node3D + `Camera3D` (orthogonal) + `Camera3D` orbit script; raycast via `PhysicsRayQueryParameters3D` or `Camera3D.ProjectRayOrigin` |
-| Procedural build/animals/animation | Reuse `.glb`; drive limbs via `AnimationPlayer` or the same procedural quaternion approach on named bones/nodes |
-| Grid `GridCell[]` + `computeIncome()` | `GameState` autoload (singleton) holding the grid + a `_Process(delta)` income tick |
-| React state / `localStorage` | Godot `Resource` save files (`ResourceSaver` / JSON) or an autoload with `user://` save |
-| HUD (resource pillars, rates) | `CanvasLayer` + `Control` UI (`Label`, `TextureRect`, `ProgressBar`) |
-| Toasts | A `Control` toast stack + `Tween` in/out |
-| Tabs (Campaign/Grid/Port/Tech/Army) | `TabContainer` or scene-swapped `Control` panels |
-| War Council recruiting / army | `GameState.Army` + a recruiting UI scene |
-| Sound engine (bell/yazh/drum) | `AudioStreamPlayer` + generated/`.wav` assets |
-
-## Optional: AI-assisted editing (Godot-MCP / Summer Engine)
-Both connect an AI agent to the running Godot editor. Pick **one** (they
-overlap) so you don't run a duplicated toolchain:
-```bash
-godot-cli install-plugin .            # adds the godot_mcp addon + NuGet deps
-godot-cli login                        # OAuth device-flow sign-in
-godot-cli setup-mcp claude-code .      # writes the Claude Code MCP config
-godot-cli open .
-```
+Godot imports **glTF (.glb) natively**, so the entire model library transfers
+directly with materials intact — no re-modelling.
 
 ## Note
-The canonical, **playable** version of Tamilan Legacy is still the web game at
-`github.com/kuganryde/TamilanLegacy` (React + Three.js). This Godot project is a
-parallel exploration — keep the web version as the source of truth until the
-port reaches parity.
+The other **playable** version of Tamilan Legacy is the web city-builder at the
+repo root (React + Three.js), deployed separately to Vercel. This Godot project
+is the RTS line of development.
