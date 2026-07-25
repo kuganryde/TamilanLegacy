@@ -11,10 +11,26 @@ public partial class GameRoot : Node3D
     public override void _Ready()
     {
         SetupEnvironment();
-        SetupCamera();
         SetupSun();
-        BuildGround(9, 9);
-        AddChild(new Board());   // data-driven grid from the GameState autoload
+        BuildGround(16, 16);
+        AddChild(new RtsCamera());        // AoE-style pan/zoom/rotate camera
+        AddChild(new Board());            // data-driven city grid (GameState autoload)
+        AddChild(new SelectionManager()); // click to select, right-click to move
+        SpawnUnits();
+    }
+
+    private void SpawnUnits()
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            var u = new Unit { Position = new Vector3(-3.5f + i * 0.9f, 0, 4.5f) };
+            AddChild(u);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            var e = new Unit { Enemy = true, Position = new Vector3(1.5f + i * 0.9f, 0, -4.5f) };
+            AddChild(e);
+        }
     }
 
     private void SetupEnvironment()
@@ -28,19 +44,6 @@ public partial class GameRoot : Node3D
             AmbientLightEnergy = 0.6f,
         };
         AddChild(new WorldEnvironment { Environment = env });
-    }
-
-    private void SetupCamera()
-    {
-        // Orthographic isometric camera, echoing the web game's board.
-        var cam = new Camera3D
-        {
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = 12f,
-        };
-        cam.Position = new Vector3(9, 10, 9);
-        cam.LookAtFromPosition(cam.Position, Vector3.Zero, Vector3.Up);
-        AddChild(cam);
     }
 
     private void SetupSun()
