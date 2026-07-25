@@ -16,9 +16,11 @@ multi-milestone build; this file is the plan and the running status.
 - [x] **M1 — RTS control loop.** `RtsCamera` (WASD/arrows pan, Q/E rotate, wheel
       zoom); `Unit` (selectable, commandable, faces travel); `SelectionManager`
       (left-click select, right-click move-to-ground). *← you are here*
-- [ ] **M2 — Movement & formations.** `NavigationRegion3D` navmesh +
-      `NavigationAgent3D` per unit → real pathfinding & obstacle avoidance;
-      box-select (drag rectangle); formation move; control groups (1–9).
+- [~] **M2 — Movement & formations.** DONE: `NavigationRegion3D` (navmesh baked
+      from ground + carved buildings) + `NavigationAgent3D` path routing with a
+      direct-move fallback; **drag box-select** with a screen overlay; formation
+      move offsets. TODO: RVO unit-unit avoidance, re-bake when buildings change,
+      control groups (1–9).
 - [ ] **M3 — Combat.** HP, attack range/rate, target acquisition, auto-attack,
       death, a state machine (`Idle/Move/Attack/Die`) via `AnimationTree`
       (idle ↔ march ↔ attack blends on the rigged models). Melee first
@@ -74,6 +76,7 @@ Main (GameRoot : Node3D)
 `GameState` (autoload) stays the single source of truth for resources/grid; a
 future `MatchState` holds teams, populations, and per-player fog.
 
-## Controls (M1)
+## Controls
 - **Pan:** WASD / arrow keys   **Rotate:** Q / E   **Zoom:** mouse wheel
-- **Select:** left-click a unit   **Move:** right-click the ground
+- **Select:** left-click a unit   **Box-select:** left-drag a rectangle
+- **Move:** right-click the ground (selection moves in formation)

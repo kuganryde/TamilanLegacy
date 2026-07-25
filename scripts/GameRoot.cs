@@ -8,16 +8,41 @@ using Godot;
 // then grow it into the full game following README.md.
 public partial class GameRoot : Node3D
 {
+    private NavigationRegion3D _nav = null!;
+
     public override void _Ready()
     {
         SetupEnvironment();
         SetupSun();
-        BuildGround(16, 16);
-        AddChild(new RtsCamera());        // AoE-style pan/zoom/rotate camera
-        AddChild(new Board());            // data-driven city grid (GameState autoload)
-        AddChild(new SelectionManager()); // click to select, right-click to move
+
+        // Navigation region: ground + buildings are bake sources so units path
+        // around the city. Units live outside it (they're agents, not geometry).
+        _nav = new NavigationRegion3D
+        {
+            NavigationMesh = new NavigationMesh
+            {
+                CellSize = 0.15f,
+                CellHeight = 0.15f,
+                AgentRadius = 0.35f,
+                AgentHeight = 1.2f,
+                AgentMaxSlope = 45f,
+            },
+        };
+        AddChild(_nav);
+
+        BuildGround(16, 16);              // added under _nav
+        _nav.AddChild(new Board());       // city tiles + building .glb (carved as obstacles)
+
+        AddChild(new RtsCamera());        // AoE-style pan / rotate / zoom
+        AddChild(new SelectionManager()); // click / drag-box select, right-click move
         SpawnUnits();
+
+        // Bake once the geometry exists. If the bake is empty, units fall back
+        // to direct movement — so the game is playable either way.
+        CallDeferred(nameof(BakeNav));
     }
+
+    private void BakeNav() => _nav.BakeNavigationMesh();
 
     private void SpawnUnits()
     {
@@ -66,6 +91,6 @@ public partial class GameRoot : Node3D
             MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.30f, 0.42f, 0.20f) },
             Position = new Vector3(0, -0.06f, 0),
         };
-        AddChild(mi);
+        _nav.AddChild(mi);   // bake source for the navmesh floor
     }
 }
