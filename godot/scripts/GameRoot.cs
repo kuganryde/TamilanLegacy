@@ -34,8 +34,10 @@ public partial class GameRoot : Node3D
         _nav.AddChild(new Board());       // city tiles + building .glb (carved as obstacles)
 
         AddChild(new RtsCamera());        // AoE-style pan / rotate / zoom
-        AddChild(new SelectionManager()); // click / drag-box select, right-click move
+        AddChild(new SelectionManager()); // click / drag-box select, right-click move / gather
         SpawnUnits();
+        SpawnEconomy();                   // villagers, resource nodes, drop-off (M4)
+        AddChild(new ResourceHud());      // top resource/pop bar (M4)
 
         // Bake once the geometry exists. If the bake is empty, units fall back
         // to direct movement — so the game is playable either way.
@@ -57,6 +59,32 @@ public partial class GameRoot : Node3D
             AddChild(e);
         }
     }
+
+    // M4: a small working economy on the open ground south of the city — a
+    // drop-off, resource nodes, and villagers ready to be tasked (right-click a
+    // node with villagers selected).
+    private void SpawnEconomy()
+    {
+        AddChild(new DropOff { Position = new Vector3(-1.5f, 0, 5.0f) });
+
+        SpawnResource(ResourceKind.Stone, 220, new Vector3(2.6f, 0, 5.4f));
+        SpawnResource(ResourceKind.Stone, 220, new Vector3(3.3f, 0, 6.1f));
+        SpawnResource(ResourceKind.Wood, 260, new Vector3(-4.2f, 0, 5.6f));
+        SpawnResource(ResourceKind.Wood, 260, new Vector3(-4.6f, 0, 6.4f));
+        SpawnResource(ResourceKind.Wood, 260, new Vector3(-3.6f, 0, 6.7f));
+        SpawnResource(ResourceKind.Food, 180, new Vector3(0.2f, 0, 6.6f));
+        SpawnResource(ResourceKind.Food, 180, new Vector3(0.9f, 0, 7.0f));
+        SpawnResource(ResourceKind.Gold, 150, new Vector3(4.6f, 0, 5.2f));
+
+        for (int i = 0; i < 4; i++)
+        {
+            var v = new Villager { Position = new Vector3(-2.6f + i * 0.7f, 0, 4.0f) };
+            AddChild(v);
+        }
+    }
+
+    private void SpawnResource(ResourceKind kind, float amount, Vector3 pos)
+        => AddChild(new ResourceNode { Kind = kind, Amount = amount, Position = pos });
 
     private void SetupEnvironment()
     {

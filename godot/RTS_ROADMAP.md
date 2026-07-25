@@ -24,12 +24,16 @@ multi-milestone build; this file is the plan and the running status.
 - [x] **M3 — Combat.** HP + billboarded health bars; auto target-acquisition
       within `AggroRange`; **right-click an enemy to attack**; attack-move,
       damage on cooldown, death; opposing groups skirmish on contact (shared
-      brain). *← you are here.* TODO (art pass): swap the facing-only attack for
-      an `AnimationTree` state machine (idle ↔ march ↔ attack ↔ die) on the
-      rigged models; ranged (archer) + cavalry charge.
-- [ ] **M4 — Economy & gathering.** Villager unit; resource nodes (quarry =
-      stone, farm = food, forest = wood, port = trade); drop-off buildings;
-      resource HUD wired to gather, not just idle ticks. Population cap via houses.
+      brain). TODO (art pass): swap the facing-only attack for an `AnimationTree`
+      state machine (idle ↔ march ↔ attack ↔ die) on the rigged models;
+      ranged (archer) + cavalry charge.
+- [x] **M4 — Economy & gathering.** `Villager` (inherits `Unit`, gather brain:
+      walk → harvest → carry → bank → repeat); `ResourceNode` (Food/Wood/Stone/
+      Gold, depletes and frees itself); `DropOff` (banks into `MatchEconomy`);
+      `MatchEconomy` autoload (resource ledger + live population); `ResourceHud`
+      top bar. **Right-click a node with villagers selected to task them.**
+      *← you are here.* TODO (next passes): population cap raised by houses,
+      buildable farms, villager build/repair, a carry indicator.
 - [ ] **M5 — Buildings & production.** Place buildings (ghost + validity),
       construction over time, Barracks/Archery-Range/Stable **train** units with
       a queue; Town Center; tech/upgrades (reuse the Olai Chuvadi tree).
@@ -83,4 +87,5 @@ future `MatchState` holds teams, populations, and per-player fog.
 - **Select:** left-click a unit   **Box-select:** left-drag a rectangle
 - **Move:** right-click the ground (selection moves in formation)
 - **Attack:** right-click an enemy unit (whole selection engages)
+- **Gather:** select villagers (amber rings), right-click a resource node
 - **Control groups:** Ctrl+1–9 assign the selection, 1–9 recall it
