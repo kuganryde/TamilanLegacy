@@ -1,10 +1,14 @@
 using Godot;
 
-// A selectable, commandable, *fighting* RTS unit.
-//  - Movement: NavigationAgent3D path routing with a direct-move fallback (M2).
-//  - Combat (M3): HP, auto target-acquisition within AggroRange, attack-move to
-//    a commanded target, damage on cooldown, death. Enemy units use the same
-//    brain, so opposing groups skirmish on contact.
+// A selectable, commandable RTS actor. This base class owns the shared
+// scaffolding — selection ring, health + health bar, NavigationAgent3D routing,
+// and steering helpers — and a default *combat* brain (M3). Villager (M4)
+// inherits it and overrides Think() with a gather brain instead of fighting.
+//
+// Movement: NavigationAgent3D path routing with a direct-move fallback (M2).
+// Combat (M3): HP, auto target-acquisition within AggroRange, attack-move to a
+// commanded target, damage on cooldown, death. Enemy units use the same brain,
+// so opposing groups skirmish on contact.
 // Note: attack uses logic + a facing turn; authored idle/march/attack animation
 // (AnimationTree on the rig) is a later art pass — see RTS_ROADMAP.md M3.
 public partial class Unit : Node3D
@@ -17,14 +21,14 @@ public partial class Unit : Node3D
     [Export] public float AttackCooldown = 1.1f;
     [Export] public float AggroRange = 5f;
 
-    public float Health { get; private set; }
+    public float Health { get; protected set; }
 
-    private Vector3? _target;                // move command
-    private Unit? _attackTarget;             // attack command / auto-acquired
+    protected Vector3? MoveTarget;            // move command
+    protected NavigationAgent3D Agent = null!;
+    private Unit? _attackTarget;              // attack command / auto-acquired
     private double _cooldown;
     private MeshInstance3D _ring = null!;
     private MeshInstance3D _hpFill = null!;
-    private NavigationAgent3D _agent = null!;
 
     public bool Selected
     {
@@ -35,21 +39,14 @@ public partial class Unit : Node3D
     public override void _Ready()
     {
         AddToGroup("units");
+        if (!Enemy) AddToGroup("pop");   // counts against player population
         Health = MaxHealth;
 
-        _agent = new NavigationAgent3D { Radius = 0.3f, PathDesiredDistance = 0.25f, TargetDesiredDistance = 0.25f };
-        AddChild(_agent);
+        Agent = new NavigationAgent3D { Radius = 0.3f, PathDesiredDistance = 0.25f, TargetDesiredDistance = 0.25f };
+        AddChild(Agent);
 
-        string modelPath = Enemy
-            ? "res://assets/models/sangam_spearman_rig.glb"
-            : "res://assets/models/sangam_warrior_rig.glb";
-        var packed = ResourceLoader.Load<PackedScene>(modelPath);
-        if (packed != null)
-        {
-            var model = packed.Instantiate<Node3D>();
-            model.Scale = Vector3.One * 0.3f;
-            AddChild(model);
-        }
+        var model = LoadModel();
+        if (model != null) AddChild(model);
 
         _ring = new MeshInstance3D
         {
@@ -58,9 +55,9 @@ public partial class Unit : Node3D
             Visible = false,
             MaterialOverride = new StandardMaterial3D
             {
-                AlbedoColor = Enemy ? new Color(0.95f, 0.25f, 0.2f) : new Color(0.25f, 0.8f, 1f),
+                AlbedoColor = RingColor(),
                 EmissionEnabled = true,
-                Emission = Enemy ? new Color(0.5f, 0.1f, 0.08f) : new Color(0.1f, 0.4f, 0.55f),
+                Emission = RingColor() * 0.5f,
             },
         };
         AddChild(_ring);
@@ -80,18 +77,34 @@ public partial class Unit : Node3D
         AddChild(_hpFill);
     }
 
-    // ---- commands ----------------------------------------------------------
-    public void MoveTo(Vector3 point)
+    // Overridable so subclasses (Villager) can pick a different model/scale.
+    protected virtual Node3D? LoadModel()
     {
-        _target = point;
-        _attackTarget = null;
-        _agent.TargetPosition = point;
+        string modelPath = Enemy
+            ? "res://assets/models/sangam_spearman_rig.glb"
+            : "res://assets/models/sangam_warrior_rig.glb";
+        var packed = ResourceLoader.Load<PackedScene>(modelPath);
+        if (packed == null) return null;
+        var model = packed.Instantiate<Node3D>();
+        model.Scale = Vector3.One * 0.3f;
+        return model;
     }
 
-    public void AttackTarget(Unit t)
+    protected virtual Color RingColor()
+        => Enemy ? new Color(0.95f, 0.25f, 0.2f) : new Color(0.25f, 0.8f, 1f);
+
+    // ---- commands ----------------------------------------------------------
+    public virtual void MoveTo(Vector3 point)
+    {
+        MoveTarget = point;
+        _attackTarget = null;
+        Agent.TargetPosition = point;
+    }
+
+    public virtual void AttackTarget(Unit t)
     {
         _attackTarget = t;
-        _target = null;
+        MoveTarget = null;
     }
 
     public void TakeDamage(float dmg)
@@ -101,10 +114,12 @@ public partial class Unit : Node3D
         if (Health <= 0) Die();
     }
 
-    private void Die()
+    protected virtual void Die()
     {
         if (IsQueuedForDeletion()) return;
         RemoveFromGroup("units");
+        RemoveFromGroup("pop");
+        MatchEconomy.Instance?.NotifyChanged();
         QueueFree();
     }
 
@@ -112,7 +127,12 @@ public partial class Unit : Node3D
     public override void _PhysicsProcess(double delta)
     {
         _cooldown -= delta;
+        Think(delta);
+    }
 
+    // Default brain = combat. Villager replaces this with gathering.
+    protected virtual void Think(double delta)
+    {
         // 1) attack an assigned/valid target
         if (_attackTarget != null && GodotObject.IsInstanceValid(_attackTarget) && _attackTarget.Health > 0)
         {
@@ -135,11 +155,11 @@ public partial class Unit : Node3D
         _attackTarget = null;
 
         // 2) move command (navmesh)
-        if (_target is Vector3 mv)
+        if (MoveTarget is Vector3 mv)
         {
             var here = GlobalPosition;
-            if (FlatDist(here, mv) < 0.08f) { _target = null; return; }
-            Vector3 aim = _agent.IsNavigationFinished() ? mv : _agent.GetNextPathPosition();
+            if (FlatDist(here, mv) < 0.08f) { MoveTarget = null; return; }
+            Vector3 aim = Agent.IsNavigationFinished() ? mv : Agent.GetNextPathPosition();
             StepDirect(aim, delta);
             return;
         }
@@ -155,6 +175,7 @@ public partial class Unit : Node3D
         foreach (var node in GetTree().GetNodesInGroup("units"))
         {
             if (node is not Unit u || u == this || u.Enemy == Enemy || u.Health <= 0) continue;
+            if (u is Villager) continue;           // don't chase harmless gatherers by default
             float d = FlatDist(GlobalPosition, u.GlobalPosition);
             if (d < bestDist) { bestDist = d; best = u; }
         }
@@ -162,18 +183,21 @@ public partial class Unit : Node3D
     }
 
     // ---- helpers -----------------------------------------------------------
-    private void StepDirect(Vector3 worldTarget, double delta)
+    // Steer straight at a world target this frame and face travel. Returns the
+    // remaining flat distance *before* the step (so callers can detect arrival).
+    protected float StepDirect(Vector3 worldTarget, double delta)
     {
         var step = worldTarget - GlobalPosition;
         step.Y = 0;
         float len = step.Length();
-        if (len < 0.0001f) return;
+        if (len < 0.0001f) return 0f;
         var dir = step / len;
         GlobalPosition += dir * Mathf.Min(Speed * (float)delta, len);
         Rotation = new Vector3(0, Mathf.Atan2(dir.X, dir.Z), 0);
+        return len;
     }
 
-    private void Face(Vector3 worldTarget)
+    protected void Face(Vector3 worldTarget)
     {
         var d = worldTarget - GlobalPosition;
         if (Mathf.IsZeroApprox(d.X) && Mathf.IsZeroApprox(d.Z)) return;
@@ -188,6 +212,6 @@ public partial class Unit : Node3D
         mat.AlbedoColor = new Color(1f - r, 0.2f + 0.7f * r, 0.2f); // green → red
     }
 
-    private static float FlatDist(Vector3 a, Vector3 b)
+    protected static float FlatDist(Vector3 a, Vector3 b)
         => new Vector2(a.X - b.X, a.Z - b.Z).Length();
 }

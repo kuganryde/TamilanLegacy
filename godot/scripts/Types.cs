@@ -4,6 +4,10 @@ using System.Collections.Generic;
 public enum ZoneType { Empty, River, Quarry, Ur, Nagar, Kovil, Eri, Shipyard, Warehouse, Barracks }
 public enum AnimalKind { None, Elephant, Ox }
 
+// RTS economy resources (Age-of-Empires style), distinct from the city-builder
+// Four Pillars. Gathered by villagers from ResourceNodes, banked at DropOffs.
+public enum ResourceKind { Food, Wood, Stone, Gold }
+
 // The Four Pillars.
 public class Pillars
 {

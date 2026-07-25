@@ -49,10 +49,12 @@ public partial class SelectionManager : Node
             }
             else if (mb.ButtonIndex == MouseButton.Right && mb.Pressed)
             {
-                // right-click an enemy → attack; empty ground → move
+                // right-click priority: enemy → attack, resource → gather, else move
                 var foe = PickEnemy(cam, mb.Position);
-                if (foe != null) CommandAttack(foe);
-                else CommandMove(cam, mb.Position);
+                if (foe != null) { CommandAttack(foe); return; }
+                var res = PickResource(cam, mb.Position);
+                if (res != null && CommandGather(res)) return;
+                CommandMove(cam, mb.Position);
             }
         }
         else if (@event is InputEventMouseMotion mm && _dragging)
@@ -145,6 +147,32 @@ public partial class SelectionManager : Node
     {
         foreach (var u in _selected)
             if (GodotObject.IsInstanceValid(u)) u.AttackTarget(foe);
+    }
+
+    // Screen-pick the resource node nearest the cursor (for right-click gather).
+    private ResourceNode? PickResource(Camera3D cam, Vector2 screen)
+    {
+        ResourceNode? best = null;
+        float bestDist = PickRadius;
+        foreach (var node in GetTree().GetNodesInGroup("resources"))
+        {
+            if (node is not ResourceNode r || r.Depleted) continue;
+            var sp = cam.UnprojectPosition(r.GlobalPosition + new Vector3(0, 0.3f, 0));
+            float d = sp.DistanceTo(screen);
+            if (d < bestDist) { bestDist = d; best = r; }
+        }
+        return best;
+    }
+
+    // Send selected villagers to gather; returns true if any villager took it.
+    private bool CommandGather(ResourceNode res)
+    {
+        bool any = false;
+        foreach (var u in _selected)
+        {
+            if (u is Villager v && GodotObject.IsInstanceValid(v)) { v.GatherFrom(res); any = true; }
+        }
+        return any;
     }
 
     private void CommandMove(Camera3D cam, Vector2 screen)
