@@ -8,15 +8,13 @@ using Godot;
 // then grow it into the full game following README.md.
 public partial class GameRoot : Node3D
 {
-    private const string ModelsDir = "res://assets/models/";
-
     public override void _Ready()
     {
         SetupEnvironment();
         SetupCamera();
         SetupSun();
-        BuildGround(8, 8);
-        PlaceShowcase();
+        BuildGround(9, 9);
+        AddChild(new Board());   // data-driven grid from the GameState autoload
     }
 
     private void SetupEnvironment()
@@ -66,40 +64,5 @@ public partial class GameRoot : Node3D
             Position = new Vector3(0, -0.06f, 0),
         };
         AddChild(mi);
-    }
-
-    private void PlaceShowcase()
-    {
-        // (model file, gridX, gridZ, scale) — a representative slice of the library.
-        var items = new (string File, int X, int Z, float Scale)[]
-        {
-            ("gopuram.glb", 0, 0, 0.9f),
-            ("market.glb", 2, 0, 0.9f),
-            ("warehouse.glb", -2, 0, 0.85f),
-            ("shipyard.glb", 0, 2, 0.9f),
-            ("barracks.glb", 0, -2, 0.85f),
-            ("quarry.glb", 2, 2, 1.0f),
-            ("elephant.glb", -2, 2, 0.6f),
-            ("palm.glb", 3, -2, 0.6f),
-            ("sangam_warrior.glb", -2, -2, 0.35f),
-            ("sangam_cavalry.glb", 3, 1, 0.4f),
-        };
-        foreach (var it in items)
-            PlaceModel(it.File, new Vector3(it.X, 0, it.Z), it.Scale);
-    }
-
-    private void PlaceModel(string file, Vector3 pos, float scale)
-    {
-        string path = ModelsDir + file;
-        var packed = ResourceLoader.Load<PackedScene>(path);
-        if (packed == null)
-        {
-            GD.PushWarning($"Model not imported yet: {path} (open the Godot editor once so it imports the .glb).");
-            return;
-        }
-        var node = packed.Instantiate<Node3D>();
-        node.Position = pos;
-        node.Scale = Vector3.One * scale;
-        AddChild(node);
     }
 }

@@ -25,12 +25,22 @@ drops a showcase of the models onto a ground plane.
 
 ## What's here
 ```
-project.godot                 # Godot 4.3, C#, main scene = scenes/Main.tscn
+project.godot                 # Godot 4.3, C#, main scene + GameState autoload
 tamilanlegacy-godot.csproj    # Godot.NET.Sdk 4.3.0, net8.0
 scenes/Main.tscn              # root Node3D + GameRoot.cs
-scripts/GameRoot.cs           # builds the board + instantiates models at runtime
+scripts/GameRoot.cs           # camera + sun + environment; hosts the Board
+scripts/Board.cs              # renders the GameState grid (tiles + building models)
+scripts/GameState.cs          # autoload singleton: grid, ComputeIncome(), 3s economy tick
+scripts/Types.cs              # ZoneType, GridCell, Pillars (4 resources), Livestock, Army
 assets/models/*.glb           # 16 models ported verbatim from the web game
 ```
+
+**Implemented so far:** the core data model + economy loop is ported —
+`GameState` (autoload) holds an 8×8 grid, computes per-tick income exactly like
+the web `computeIncome()`, and ticks every 3s; `Board` draws the grid as tiles +
+`.glb` buildings and rebuilds on change. A small starter city is seeded so income
+flows immediately. Still to do: input/selection, build UI/HUD, workers & animals
+UI, tabs (Port/Tech/War Council), audio, and animation (see roadmap below).
 
 ## Why the asset reuse is a big deal
 Godot imports **glTF (.glb) natively**, so the entire model library — gopuram,
