@@ -1,15 +1,11 @@
-# Godot 4 / .NET
+# Godot 4 (GDScript)
 .godot/
 .import/
-export.cfg
-export_presets.cfg
 
-# C# / .NET build output
-.mono/
-data_*/
-bin/
-obj/
-*.user
+# Export output (CI produces this). export_presets.cfg IS committed on purpose
+# so the Web preset ships to CI — do not ignore it.
+build/
+export.cfg
 
 # OS / editor
 .DS_Store

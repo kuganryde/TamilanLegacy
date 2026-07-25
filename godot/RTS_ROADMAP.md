@@ -6,8 +6,10 @@ multi-milestone build; this file is the plan and the running status.
 
 > Reality check: AoE is a decade of studio work. We are building a **solid,
 > extensible foundation** and growing it milestone by milestone — not cloning
-> AoE in one pass. Everything is authored headlessly and **must be verified in
-> the Godot 4.3 (mono) editor** — expect first-open fixes.
+> AoE in one pass. The project is **GDScript** (Godot 4.3 standard build), chosen
+> so it can **export to the web** — Godot's C#/.NET target can't export HTML5.
+> Everything is authored headlessly; the CI web-export (`.github/workflows/
+> godot-web.yml`, deploying to GitHub Pages) is the live compile check.
 
 ## Gameplay milestones
 
