@@ -1,16 +1,19 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 
 // RTS input. Left-click = single select; left-drag = box select (multi);
-// right-click = move the selection to the ground point in a small formation.
-// Collider-free: units are picked in screen space, the move target is the
-// camera ray / ground-plane (y=0) intersection.
+// right-click on an enemy = attack it; right-click on ground = move there in a
+// small formation. Control groups: Ctrl+1..9 assigns the current selection,
+// 1..9 recalls it. Collider-free: units are picked in screen space, the move
+// target is the camera ray / ground-plane (y=0) intersection.
 public partial class SelectionManager : Node
 {
     private const float DragThreshold = 8f;   // px before a click becomes a drag
     private const float PickRadius = 42f;      // px around a click to grab a unit
 
     private readonly List<Unit> _selected = new();
+    private readonly Dictionary<int, List<Unit>> _groups = new();
     private SelectionBox _box = null!;
     private bool _dragging;
     private Vector2 _dragStart;
@@ -46,7 +49,10 @@ public partial class SelectionManager : Node
             }
             else if (mb.ButtonIndex == MouseButton.Right && mb.Pressed)
             {
-                CommandMove(cam, mb.Position);
+                // right-click an enemy → attack; empty ground → move
+                var foe = PickEnemy(cam, mb.Position);
+                if (foe != null) CommandAttack(foe);
+                else CommandMove(cam, mb.Position);
             }
         }
         else if (@event is InputEventMouseMotion mm && _dragging)
@@ -55,11 +61,41 @@ public partial class SelectionManager : Node
             _box.Active = _box.Box.Size.Length() > DragThreshold;
             _box.QueueRedraw();
         }
+        else if (@event is InputEventKey k && k.Pressed && !k.Echo)
+        {
+            HandleGroupKey(k);
+        }
+    }
+
+    // ---- control groups (Ctrl+1..9 assign, 1..9 recall) --------------------
+    private void HandleGroupKey(InputEventKey k)
+    {
+        int n = DigitFrom(k.Keycode);
+        if (n < 1 || n > 9) return;
+
+        if (k.CtrlPressed)
+        {
+            _groups[n] = _selected.Where(GodotObject.IsInstanceValid).ToList();
+        }
+        else if (_groups.TryGetValue(n, out var members))
+        {
+            members.RemoveAll(u => !GodotObject.IsInstanceValid(u) || u.Health <= 0);
+            ClearSelection();
+            foreach (var u in members) { u.Selected = true; _selected.Add(u); }
+        }
+    }
+
+    private static int DigitFrom(Key key)
+    {
+        if (key >= Key.Key1 && key <= Key.Key9) return (int)key - (int)Key.Key0;
+        if (key >= Key.Kp1 && key <= Key.Kp9) return (int)key - (int)Key.Kp0;
+        return -1;
     }
 
     private void ClearSelection()
     {
-        foreach (var u in _selected) u.Selected = false;
+        foreach (var u in _selected)
+            if (GodotObject.IsInstanceValid(u)) u.Selected = false;
         _selected.Clear();
     }
 
@@ -90,6 +126,27 @@ public partial class SelectionManager : Node
         }
     }
 
+    // Screen-pick the enemy unit nearest the cursor (for right-click attack).
+    private Unit? PickEnemy(Camera3D cam, Vector2 screen)
+    {
+        Unit? best = null;
+        float bestDist = PickRadius;
+        foreach (var node in GetTree().GetNodesInGroup("units"))
+        {
+            if (node is not Unit u || !u.Enemy || u.Health <= 0) continue;
+            var sp = cam.UnprojectPosition(u.GlobalPosition + new Vector3(0, 0.3f, 0));
+            float d = sp.DistanceTo(screen);
+            if (d < bestDist) { bestDist = d; best = u; }
+        }
+        return best;
+    }
+
+    private void CommandAttack(Unit foe)
+    {
+        foreach (var u in _selected)
+            if (GodotObject.IsInstanceValid(u)) u.AttackTarget(foe);
+    }
+
     private void CommandMove(Camera3D cam, Vector2 screen)
     {
         var point = GroundPoint(cam, screen);
@@ -97,6 +154,7 @@ public partial class SelectionManager : Node
         int i = 0;
         foreach (var u in _selected)
         {
+            if (!GodotObject.IsInstanceValid(u)) continue;
             var offset = new Vector3((i % 4) * 0.7f - 1.0f, 0, (i / 4) * 0.7f);
             u.MoveTo(p + offset);
             i++;

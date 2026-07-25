@@ -15,16 +15,18 @@ multi-milestone build; this file is the plan and the running status.
       `ComputeIncome`, 3 s tick); `Board` renders tiles + `.glb` buildings.
 - [x] **M1 — RTS control loop.** `RtsCamera` (WASD/arrows pan, Q/E rotate, wheel
       zoom); `Unit` (selectable, commandable, faces travel); `SelectionManager`
-      (left-click select, right-click move-to-ground). *← you are here*
-- [~] **M2 — Movement & formations.** DONE: `NavigationRegion3D` (navmesh baked
+      (left-click select, right-click move-to-ground).
+- [x] **M2 — Movement & formations.** `NavigationRegion3D` (navmesh baked
       from ground + carved buildings) + `NavigationAgent3D` path routing with a
       direct-move fallback; **drag box-select** with a screen overlay; formation
-      move offsets. TODO: RVO unit-unit avoidance, re-bake when buildings change,
-      control groups (1–9).
-- [ ] **M3 — Combat.** HP, attack range/rate, target acquisition, auto-attack,
-      death, a state machine (`Idle/Move/Attack/Die`) via `AnimationTree`
-      (idle ↔ march ↔ attack blends on the rigged models). Melee first
-      (warrior/spearman), then ranged (archer), then cavalry charge.
+      move offsets; **control groups** (Ctrl+1–9 assign, 1–9 recall). TODO
+      (polish, deferred): RVO unit-unit avoidance, re-bake when buildings change.
+- [x] **M3 — Combat.** HP + billboarded health bars; auto target-acquisition
+      within `AggroRange`; **right-click an enemy to attack**; attack-move,
+      damage on cooldown, death; opposing groups skirmish on contact (shared
+      brain). *← you are here.* TODO (art pass): swap the facing-only attack for
+      an `AnimationTree` state machine (idle ↔ march ↔ attack ↔ die) on the
+      rigged models; ranged (archer) + cavalry charge.
 - [ ] **M4 — Economy & gathering.** Villager unit; resource nodes (quarry =
       stone, farm = food, forest = wood, port = trade); drop-off buildings;
       resource HUD wired to gather, not just idle ticks. Population cap via houses.
@@ -80,3 +82,5 @@ future `MatchState` holds teams, populations, and per-player fog.
 - **Pan:** WASD / arrow keys   **Rotate:** Q / E   **Zoom:** mouse wheel
 - **Select:** left-click a unit   **Box-select:** left-drag a rectangle
 - **Move:** right-click the ground (selection moves in formation)
+- **Attack:** right-click an enemy unit (whole selection engages)
+- **Control groups:** Ctrl+1–9 assign the selection, 1–9 recall it
