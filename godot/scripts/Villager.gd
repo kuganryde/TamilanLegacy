@@ -51,7 +51,7 @@ func move_to(point: Vector3) -> void:
 	super.move_to(point)
 
 # Villagers ignore attack orders.
-func attack_target(_t: Unit) -> void:
+func attack_target(_t) -> void:
 	pass
 
 func _think(delta: float) -> void:
@@ -131,6 +131,8 @@ func _find_nearest_dropoff() -> Node3D:
 		var d3 := node as Node3D
 		if d3 == null:
 			continue
+		if ("enemy" in d3) and d3.enemy:
+			continue                              # only bank at friendly drop-offs
 		var dist := _flat_dist(global_position, d3.global_position)
 		if dist < best_dist:
 			best_dist = dist

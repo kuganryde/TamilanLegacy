@@ -53,4 +53,4 @@ func _refresh() -> void:
 	_wood.text = "Wood  %d" % Econ.wood
 	_stone.text = "Stone  %d" % Econ.stone
 	_gold.text = "Gold  %d" % Econ.gold
-	_pop.text = "Pop  %d/%d" % [Econ.pop(), Econ.pop_cap]
+	_pop.text = "Pop  %d/%d" % [Econ.pop(), Econ.pop_cap()]
