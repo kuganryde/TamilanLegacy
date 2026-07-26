@@ -168,16 +168,17 @@ func _acquire_target() -> void:
 	_attack_target = _nearest_enemy_building() if (enemy and attack_damage > 0) else null
 
 func _nearest_enemy_building():
+	# Duck-typed (no static Building reference) to avoid a Unit<->Building cyclic
+	# class dependency. Nodes in "buildings" expose enemy/health/global_position.
 	var best = null
 	var best_dist := INF
 	for node in get_tree().get_nodes_in_group("buildings"):
-		var b := node as Building
-		if b == null or b.enemy == enemy or b.health <= 0:
+		if not (node is Node3D) or node.enemy == enemy or node.health <= 0:
 			continue
-		var d := _flat_dist(global_position, b.global_position)
+		var d := _flat_dist(global_position, node.global_position)
 		if d < best_dist:
 			best_dist = d
-			best = b
+			best = node
 	return best
 
 # ---- helpers ---------------------------------------------------------------

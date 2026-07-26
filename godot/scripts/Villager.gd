@@ -131,8 +131,10 @@ func _find_nearest_dropoff() -> Node3D:
 		var d3 := node as Node3D
 		if d3 == null:
 			continue
-		if ("enemy" in d3) and d3.enemy:
-			continue                              # only bank at friendly drop-offs
+		# Only bank at friendly drop-offs. `node` is untyped so reading `enemy`
+		# is a dynamic lookup (Node3D has no such property → typed access errors).
+		if ("enemy" in node) and node.enemy:
+			continue
 		var dist := _flat_dist(global_position, d3.global_position)
 		if dist < best_dist:
 			best_dist = dist
