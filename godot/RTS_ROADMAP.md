@@ -41,10 +41,20 @@ multi-milestone build; this file is the plan and the running status.
       cursor; Houses raise the population cap; buildings are destructible and
       units can attack them; **destroy the enemy Town Centre to win** (lose yours
       and it's `DEFEAT`) via `GameOverOverlay`. Idle enemy fighters march on your
-      base so the match is losable before full AI. *← you are here.* TODO:
-      construction-in-progress time, placement validity, tech/upgrades.
-- [ ] **M6 — Opponent AI.** Simple skirmish AI: expand, gather, army up, attack
-      waves. Fog of war + minimap.
+      base so the match is losable before full AI. TODO: construction-in-progress
+      time, placement validity, tech/upgrades.
+- [x] **M6 — Opponent AI, minimap, dashboard, 3D camera.** `EnemyAI` runs a
+      war-economy (income), trains warriors on a budget at its Barracks/Town
+      Centre, tasks its villagers to gather, and launches timed **attack waves**
+      at the player Town Centre. `Minimap` (bottom-right) plots units/buildings/
+      resources + camera focus and pans on click. `Dashboard` (left) shows live
+      counts, match timer and selection details. **Microinteractions:** a global
+      `Toast` feed (unit ready, war-band incoming, build results) and a move-order
+      ground **ping**. Camera switched to a true **perspective 3D** view (pitch +
+      FOV, distance zoom). Visual pass toward the concept art: **walled temple
+      compound** (prakara + gateway), warm **sky** + filmic tonemap, lusher paddy
+      ground (on top of the sea/ships/fields/Eri scenery). *← you are here.* TODO:
+      fog of war, smarter AI target selection, difficulty tuning.
 - [ ] **M7 — Ages.** Sangam → Pallava → Imperial Chola age-up gating buildings,
       units and upgrades (ties in the era characters you commissioned).
 - [ ] **M8 — Meta.** Win/lose, match setup, save/load, audio, polish.

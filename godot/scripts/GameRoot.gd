@@ -29,8 +29,14 @@ func _ready() -> void:
 	_spawn_units()
 	_spawn_economy()                  # villagers, resource nodes (M4)
 	_spawn_buildings()                # town centres, barracks, houses (M5)
+	_spawn_enemy_economy()            # enemy villagers + nodes (M6)
 	add_child(ResourceHud.new())      # top resource/pop bar (M4)
 	add_child(GameOverOverlay.new())  # victory / defeat (M5)
+	add_child(Dashboard.new())        # left info dashboard (M6)
+	add_child(EnemyAI.new())          # opponent AI: trains + attack waves (M6)
+	var minimap_layer := CanvasLayer.new()
+	minimap_layer.add_child(Minimap.new())   # bottom-right minimap (M6)
+	add_child(minimap_layer)
 
 	# Bake once the geometry exists. If the bake is empty, units fall back to
 	# direct movement — so the game is playable either way.
@@ -94,13 +100,32 @@ func _spawn_building(kind: int, is_enemy: bool, pos: Vector3) -> void:
 	b.position = pos
 	add_child(b)
 
+# M6: a small enemy economy near its base so the opponent visibly gathers.
+func _spawn_enemy_economy() -> void:
+	_spawn_resource(GameEnums.ResourceKind.WOOD, 240, Vector3(-1.4, 0, -6.7))
+	_spawn_resource(GameEnums.ResourceKind.STONE, 200, Vector3(2.4, 0, -6.7))
+	for x in [-0.4, 1.2]:
+		var v := Villager.new()
+		v.enemy = true
+		v.position = Vector3(x, 0, -5.1)
+		add_child(v)
+
 func _setup_environment() -> void:
+	# Warm daytime sky (concept-art look) instead of a flat dark backdrop.
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.30, 0.52, 0.82)
+	sky_mat.sky_horizon_color = Color(0.78, 0.83, 0.86)
+	sky_mat.ground_horizon_color = Color(0.74, 0.76, 0.72)
+	sky_mat.ground_bottom_color = Color(0.46, 0.47, 0.38)
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+
 	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.07, 0.07, 0.09)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.50, 0.55, 0.62)
-	env.ambient_light_energy = 0.6
+	env.background_mode = Environment.BG_SKY
+	env.sky = sky
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+	env.ambient_light_energy = 0.85
+	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -108,9 +133,9 @@ func _setup_environment() -> void:
 func _setup_sun() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.light_energy = 1.2
-	sun.light_color = Color(1.0, 0.94, 0.82)
-	sun.rotation_degrees = Vector3(-55, -40, 0)
+	sun.light_energy = 1.15
+	sun.light_color = Color(1.0, 0.92, 0.76)   # warm afternoon sun
+	sun.rotation_degrees = Vector3(-52, -46, 0)
 	add_child(sun)
 
 func _build_ground(cols: int, rows: int) -> void:
@@ -119,7 +144,7 @@ func _build_ground(cols: int, rows: int) -> void:
 	plane.size = Vector2(cols, rows)
 	mi.mesh = plane
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.30, 0.42, 0.20)
+	mat.albedo_color = Color(0.34, 0.5, 0.24)   # lush paddy green
 	mi.material_override = mat
 	mi.position = Vector3(0, -0.06, 0)
 	_nav.add_child(mi)   # bake source for the navmesh floor

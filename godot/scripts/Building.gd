@@ -34,6 +34,8 @@ func _ready() -> void:
 	var model := _load_model()
 	if model != null:
 		add_child(model)
+	if kind == Kind.TOWN_CENTER:
+		_add_compound()
 
 	_ring = _make_ring()
 	add_child(_ring)
@@ -82,11 +84,14 @@ static func build_cost(k: int) -> Dictionary:
 func queue_train(t: int) -> bool:
 	if not trainables().has(t):
 		return false
-	if Econ == null or not Econ.has_pop_room():
-		return false
-	var c: Dictionary = train_cost(t)
-	if not Econ.try_spend(c.get("food", 0), c.get("wood", 0), c.get("stone", 0), c.get("gold", 0)):
-		return false
+	# The player pays resources and respects the pop cap; the enemy AI trains on
+	# its own budget (handled in EnemyAI), so enemy buildings skip these checks.
+	if not enemy:
+		if Econ == null or not Econ.has_pop_room():
+			return false
+		var c: Dictionary = train_cost(t)
+		if not Econ.try_spend(c.get("food", 0), c.get("wood", 0), c.get("stone", 0), c.get("gold", 0)):
+			return false
 	_queue.append(t)
 	if _train_left <= 0.0:
 		_start_next()
@@ -124,6 +129,8 @@ func _spawn_trained(t: int) -> void:
 	var forward := 1.6 if not enemy else -1.6
 	unit.position = global_position + Vector3(randf_range(-0.5, 0.5), 0, forward)
 	get_parent().add_child(unit)
+	if not enemy and Toast:
+		Toast.push("%s ready" % train_label(t), Color(0.6, 0.9, 1.0))
 
 # ---- damage / death --------------------------------------------------------
 func take_damage(dmg: float) -> void:
@@ -159,6 +166,34 @@ func _load_model() -> Node3D:
 	var node := packed.instantiate() as Node3D
 	node.scale = Vector3.ONE * s
 	return node
+
+# A brick prakara (compound wall) around the temple with a front gateway gap —
+# the walled-temple silhouette from the concept art.
+func _add_compound() -> void:
+	var half := 2.3
+	var h := 0.85
+	var t := 0.26
+	var brick := Color(0.62, 0.3, 0.2)
+	add_child(_wall(Vector3(half * 2 + t, h, t), Vector3(0, h * 0.5, -half), brick))   # back
+	add_child(_wall(Vector3(t, h, half * 2), Vector3(-half, h * 0.5, 0), brick))       # west
+	add_child(_wall(Vector3(t, h, half * 2), Vector3(half, h * 0.5, 0), brick))        # east
+	add_child(_wall(Vector3(1.7, h, t), Vector3(-1.45, h * 0.5, half), brick))         # front-left
+	add_child(_wall(Vector3(1.7, h, t), Vector3(1.45, h * 0.5, half), brick))          # front-right
+	# gate pillars flanking the entrance
+	add_child(_wall(Vector3(0.34, h + 0.35, 0.34), Vector3(-0.75, (h + 0.35) * 0.5, half), Color(0.68, 0.34, 0.22)))
+	add_child(_wall(Vector3(0.34, h + 0.35, 0.34), Vector3(0.75, (h + 0.35) * 0.5, half), Color(0.68, 0.34, 0.22)))
+
+func _wall(size: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	mi.position = pos
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.85
+	mi.material_override = mat
+	return mi
 
 func _make_ring() -> MeshInstance3D:
 	var mi := MeshInstance3D.new()

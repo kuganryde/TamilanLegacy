@@ -160,26 +160,9 @@ func _acquire_target() -> void:
 		if d < best_dist:
 			best_dist = d
 			best = u
-	if best != null:
-		_attack_target = best
-		return
-	# Enemy fighters with nothing to fight march on the nearest player building,
-	# so the player can actually be defeated (basic aggression pending full AI).
-	_attack_target = _nearest_enemy_building() if (enemy and attack_damage > 0) else null
-
-func _nearest_enemy_building():
-	# Duck-typed (no static Building reference) to avoid a Unit<->Building cyclic
-	# class dependency. Nodes in "buildings" expose enemy/health/global_position.
-	var best = null
-	var best_dist := INF
-	for node in get_tree().get_nodes_in_group("buildings"):
-		if not (node is Node3D) or node.enemy == enemy or node.health <= 0:
-			continue
-		var d := _flat_dist(global_position, node.global_position)
-		if d < best_dist:
-			best_dist = d
-			best = node
-	return best
+	# Nothing in range: hold position. Enemy attack waves are now orchestrated by
+	# EnemyAI (M6), which explicitly commands war-bands onto the player's base.
+	_attack_target = best
 
 # ---- helpers ---------------------------------------------------------------
 # Steer straight at a world target this frame and face travel. Returns the

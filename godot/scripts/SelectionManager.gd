@@ -102,6 +102,10 @@ func _try_place(pos: Vector3) -> void:
 		b.enemy = false
 		b.position = pos
 		get_tree().current_scene.add_child(b)
+		if Toast:
+			Toast.push("%s built" % Building.build_label(_placing), Color(0.6, 0.95, 0.7))
+	elif Toast:
+		Toast.push("Not enough resources", Color(0.98, 0.55, 0.45))
 	_cancel_placement()
 
 func _cancel_placement() -> void:
@@ -201,6 +205,30 @@ func _refresh_command_card() -> void:
 		_command_card.show_for_villager()
 	else:
 		_command_card.hide_card()
+	_report_selection()
+
+func _report_selection() -> void:
+	var text := "Selection: —"
+	if _selected_building != null and is_instance_valid(_selected_building):
+		var b := _selected_building
+		text = "Selection: %s  (HP %d/%d)" % [Building.build_label(b.kind), int(b.health), int(b.max_health)]
+	elif not _selected.is_empty():
+		var vil := 0
+		var sol := 0
+		for u in _selected:
+			if not is_instance_valid(u):
+				continue
+			if u is Villager:
+				vil += 1
+			else:
+				sol += 1
+		if vil > 0 and sol > 0:
+			text = "Selection: %d villagers, %d soldiers" % [vil, sol]
+		elif vil > 0:
+			text = "Selection: %d villager(s)" % vil
+		else:
+			text = "Selection: %d soldier(s)" % sol
+	get_tree().call_group("dashboard", "set_selection_info", text)
 
 func _has_villager_selected() -> bool:
 	for u in _selected:
@@ -262,6 +290,8 @@ func _command_gather(res: ResourceNode) -> bool:
 		if u is Villager and is_instance_valid(u):
 			u.gather_from(res)
 			any = true
+	if any and Toast:
+		Toast.push("Villagers sent to gather", Color(0.95, 0.82, 0.4))
 	return any
 
 func _command_move(cam: Camera3D, screen: Vector2) -> void:
@@ -276,6 +306,10 @@ func _command_move(cam: Camera3D, screen: Vector2) -> void:
 		var offset := Vector3((i % 4) * 0.7 - 1.0, 0, (i / 4) * 0.7)
 		u.move_to(p + offset)
 		i += 1
+	if i > 0:
+		var ping := MovePing.new()
+		ping.position = p
+		get_tree().current_scene.add_child(ping)
 
 func _rect_from(a: Vector2, b: Vector2) -> Rect2:
 	var pos := Vector2(min(a.x, b.x), min(a.y, b.y))

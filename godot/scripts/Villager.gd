@@ -97,7 +97,7 @@ func _think(delta: float) -> void:
 				_state = VState.IDLE
 				return
 			if _flat_dist(global_position, drop.global_position) <= DROP_REACH:
-				if Econ:
+				if not enemy and Econ:
 					Econ.deposit(_carry_kind, roundi(_carry))
 				_carry = 0.0
 				if _node_usable(_node):
@@ -131,9 +131,9 @@ func _find_nearest_dropoff() -> Node3D:
 		var d3 := node as Node3D
 		if d3 == null:
 			continue
-		# Only bank at friendly drop-offs. `node` is untyped so reading `enemy`
+		# Only bank at same-team drop-offs. `node` is untyped so reading `enemy`
 		# is a dynamic lookup (Node3D has no such property → typed access errors).
-		if ("enemy" in node) and node.enemy:
+		if ("enemy" in node) and node.enemy != enemy:
 			continue
 		var dist := _flat_dist(global_position, d3.global_position)
 		if dist < best_dist:
