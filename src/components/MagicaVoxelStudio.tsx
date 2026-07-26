@@ -472,12 +472,35 @@ export default function MagicaVoxelStudio({ onExportToCityGrid }: MagicaVoxelStu
 
                   return (
                     <g key={`voxel-${v.x}-${v.y}-${v.z}-${idx}`}>
-                      {/* Left Face (Shadow) */}
-                      <polygon points={leftPoints} fill={paletteColor} opacity="0.75" stroke="#120F0D" strokeWidth="0.4" />
-                      {/* Right Face (Mid) */}
-                      <polygon points={rightPoints} fill={paletteColor} opacity="0.88" stroke="#120F0D" strokeWidth="0.4" />
-                      {/* Top Face (Bright) */}
+                      {/* Ground Contact Shadow */}
+                      {v.z === 0 && (
+                        <ellipse
+                          cx={isoX}
+                          cy={isoY + h + 8}
+                          rx={w * 0.9}
+                          ry={h * 0.6}
+                          fill="rgba(0, 0, 0, 0.45)"
+                        />
+                      )}
+
+                      {/* Left Face (Shadow Face) */}
+                      <polygon points={leftPoints} fill={paletteColor} opacity="0.65" stroke="#120F0D" strokeWidth="0.4" />
+                      
+                      {/* Right Face (Mid Tone Face) */}
+                      <polygon points={rightPoints} fill={paletteColor} opacity="0.82" stroke="#120F0D" strokeWidth="0.4" />
+                      
+                      {/* Top Face (Bright Overhead Sunlight) */}
                       <polygon points={topPoints} fill={paletteColor} stroke="#120F0D" strokeWidth="0.5" />
+
+                      {/* Specular Edge Highlight Line (Top-Left Bevel Edge) */}
+                      <line
+                        x1={isoX - w}
+                        y1={isoY}
+                        x2={isoX}
+                        y2={isoY - h}
+                        stroke="rgba(255, 255, 255, 0.45)"
+                        strokeWidth="0.6"
+                      />
                     </g>
                   );
                 })}

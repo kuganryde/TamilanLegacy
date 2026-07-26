@@ -339,11 +339,48 @@ export default function NagaraGrid({
                   <feGaussianBlur stdDeviation="3" result="blur" />
                   <feComposite in="SourceGraphic" in2="blur" operator="over" />
                 </filter>
+                
+                {/* Soft Ground Shadow Filter */}
+                <filter id="groundShadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feGaussianBlur stdDeviation="2.5" />
+                </filter>
+
+                {/* Top Face Realistic Sunlight Gradients */}
+                <linearGradient id="topGraniteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#57534E" />
+                  <stop offset="50%" stopColor="#44403C" />
+                  <stop offset="100%" stopColor="#292524" />
+                </linearGradient>
+
+                <linearGradient id="topGoldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FDE047" />
+                  <stop offset="40%" stopColor="#F59E0B" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+
+                <linearGradient id="topPaddyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#34D399" />
+                  <stop offset="60%" stopColor="#059669" />
+                  <stop offset="100%" stopColor="#047857" />
+                </linearGradient>
+
+                <linearGradient id="topAmberGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FBBF24" />
+                  <stop offset="50%" stopColor="#D97706" />
+                  <stop offset="100%" stopColor="#B45309" />
+                </linearGradient>
+
+                {/* Side Face Ambient Shadows */}
+                <linearGradient id="sideLeftGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.15)" />
+                  <stop offset="100%" stopColor="rgba(0,0,0,0.45)" />
+                </linearGradient>
+
                 {/* Water Shimmer Pattern */}
                 <linearGradient id="isoWaterGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#0284C7" />
-                  <stop offset="50%" stopColor="#0369A1" />
-                  <stop offset="100%" stopColor="#075985" />
+                  <stop offset="0%" stopColor="#38BDF8" />
+                  <stop offset="40%" stopColor="#0284C7" />
+                  <stop offset="100%" stopColor="#0369A1" />
                 </linearGradient>
               </defs>
 
@@ -390,14 +427,30 @@ export default function NagaraGrid({
                     onMouseLeave={() => setHoveredCellId(null)}
                     className="cursor-pointer transition-transform duration-200"
                   >
-                    {/* Left Extruded Face (Shadow Face) */}
+                    {/* Ground Cast Ambient Shadow Polygon */}
                     {h > 0 && (
                       <polygon
-                        points={leftPolygonPoints}
-                        fill={config.leftColor}
-                        stroke="#1C1713"
-                        strokeWidth="0.5"
+                        points={`${isoX - TILE_W / 2 + 4},${isoY + TILE_H / 2 + 2} ${isoX + 4},${isoY + TILE_H + 2} ${isoX + TILE_W / 2 + 8},${isoY + TILE_H / 2 + 4} ${isoX + 8},${isoY + 4}`}
+                        fill="rgba(0, 0, 0, 0.45)"
+                        filter="url(#groundShadow)"
                       />
+                    )}
+
+                    {/* Left Extruded Face (Shadow Face with Depth Gradient) */}
+                    {h > 0 && (
+                      <>
+                        <polygon
+                          points={leftPolygonPoints}
+                          fill={config.leftColor}
+                          stroke="#1C1713"
+                          strokeWidth="0.5"
+                        />
+                        <polygon
+                          points={leftPolygonPoints}
+                          fill="url(#sideLeftGrad)"
+                          opacity="0.6"
+                        />
+                      </>
                     )}
 
                     {/* Right Extruded Face (Mid Tone Face) */}
@@ -410,14 +463,22 @@ export default function NagaraGrid({
                       />
                     )}
 
-                    {/* Tile Top Diamond Face */}
+                    {/* Tile Top Diamond Face with Specular Bevel Highlights */}
                     <polygon
                       points={topPolygonPoints}
-                      fill={isHovered ? '#D2691E' : config.topColor}
+                      fill={isHovered ? '#D2691E' : cell.type === 'ur' && cell.hasWater ? 'url(#topPaddyGrad)' : cell.type === 'quarry' ? 'url(#topGraniteGrad)' : cell.type === 'nagar' ? 'url(#topAmberGrad)' : cell.type === 'kovil' ? 'url(#topGoldGrad)' : config.topColor}
                       stroke={isSelected ? '#FFD700' : config.strokeColor}
                       strokeWidth={isSelected ? '2.5' : '0.8'}
                       filter={isSelected ? 'url(#goldGlow)' : undefined}
                       opacity={isSelected ? 1 : 0.95}
+                    />
+
+                    {/* Top Specular Edge Highlight Line (Lit Top-Left Edge) */}
+                    <polyline
+                      points={`${leftX},${leftY} ${topX},${topY} ${rightX},${rightY}`}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.4)"
+                      strokeWidth="0.7"
                     />
 
                     {/* 3D Building Sprites / Structures on Top Face */}

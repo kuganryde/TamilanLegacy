@@ -37,8 +37,10 @@ import { audio } from './utils/audio';
 import { 
   Coins, BookOpen, Heart, Shield, Users, 
   Volume2, VolumeX, HelpCircle, RefreshCw, 
-  Sparkles, Globe, Compass, Landmark, ScrollText
+  Sparkles, Globe, Compass, Landmark, ScrollText, Activity, TrendingUp, Keyboard
 } from 'lucide-react';
+import ResourceTrendChart, { TrendDataPoint } from './components/ResourceTrendChart';
+import GameGuideModal from './components/GameGuideModal';
 
 
 // Starting values
@@ -257,6 +259,24 @@ export default function App() {
   const [isEpigraphModalOpen, setIsEpigraphModalOpen] = useState<boolean>(false);
   const [selectedEpigraphTermId, setSelectedEpigraphTermId] = useState<string | null>(null);
 
+  // Recharts Economic Trend State
+  const [isTrendChartOpen, setIsTrendChartOpen] = useState<boolean>(false);
+  const [trendData, setTrendData] = useState<TrendDataPoint[]>(() => {
+    return Array.from({ length: 10 }, (_, i) => {
+      const dayNum = i + 1;
+      const ratio = (i + 1) / 10;
+      return {
+        dayLabel: `Day ${dayNum}`,
+        dayNumber: dayNum,
+        aruvam: Math.round(120 + ratio * 230),
+        arivu: Math.round(15 + ratio * 25),
+        aruvamNet: Math.round(12 + (i % 3) * 6),
+        arivuNet: Math.round(3 + (i % 2) * 3),
+        weatherName: i % 2 === 0 ? 'Clear Kaveri Skies' : 'Northeast Rain'
+      };
+    });
+  });
+
   const handleOpenEpigraph = (termId?: string) => {
     audio.playYazh(440);
     if (termId) setSelectedEpigraphTermId(termId);
@@ -279,6 +299,25 @@ export default function App() {
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
+
+  // Global Keyboard Micro-Interaction Hotkeys
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger hotkeys if user is typing inside an input field
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      if (e.key === '1') { audio.playYazh(293.66); setActiveTab('campaign'); }
+      if (e.key === '2') { audio.playYazh(329.63); setActiveTab('grid'); }
+      if (e.key === '3') { audio.playYazh(349.23); setActiveTab('port'); }
+      if (e.key === '4') { audio.playYazh(392.00); setActiveTab('tech'); }
+      if (e.key === '5') { audio.playYazh(440.00); setActiveTab('voxel'); }
+      if (e.key.toLowerCase() === 'e') { handleOpenEpigraph('meikirthi'); }
+      if (e.key === '?' || e.key.toLowerCase() === 'h') { audio.playYazh(480); setIsHelpOpen(prev => !prev); }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Observe Campaign Phase Transitions
   const isInitialPhaseMount = useRef(true);
@@ -340,6 +379,7 @@ export default function App() {
     const savedCampaign = localStorage.getItem('chola_campaign');
     const savedDay = localStorage.getItem('chola_day');
     const savedWeather = localStorage.getItem('chola_weather');
+    const savedTrend = localStorage.getItem('chola_trend_data');
 
     if (savedResources) setResources(JSON.parse(savedResources));
     if (savedGrid) setGrid(JSON.parse(savedGrid));
@@ -347,6 +387,7 @@ export default function App() {
     if (savedCampaign) setCampaign(JSON.parse(savedCampaign));
     if (savedDay) setCurrentDay(JSON.parse(savedDay));
     if (savedWeather) setMonsoonWeather(JSON.parse(savedWeather));
+    if (savedTrend) setTrendData(JSON.parse(savedTrend));
   }, []);
 
   // Gentle floating animation for resource HUD icons using Anime.js
@@ -377,7 +418,8 @@ export default function App() {
     localStorage.setItem('chola_campaign', JSON.stringify(campaign));
     localStorage.setItem('chola_day', JSON.stringify(currentDay));
     localStorage.setItem('chola_weather', JSON.stringify(monsoonWeather));
-  }, [resources, grid, techs, campaign, currentDay, monsoonWeather]);
+    localStorage.setItem('chola_trend_data', JSON.stringify(trendData));
+  }, [resources, grid, techs, campaign, currentDay, monsoonWeather, trendData]);
 
   // Anime.js Resource Pulse & Color Glow on Tick
   const prevResourcesRef = useRef<Resources>(resources);
@@ -420,13 +462,33 @@ export default function App() {
 
   // Advance Day & Shift Monsoon Weather
   const handleAdvanceDay = () => {
-    setCurrentDay(prev => prev + 1);
+    const nextDay = currentDay + 1;
+    setCurrentDay(nextDay);
     const nextWeather = getRandomMonsoonWeather(monsoonWeather.type);
     setMonsoonWeather(nextWeather);
     setTimeUntilNextDay(60); // Reset 60s day cycle timer
 
+    setTrendData(prev => {
+      const lastPoint = prev[prev.length - 1] || { aruvam: resources.aruvam, arivu: resources.arivu };
+      const netAruvam = resources.aruvam - lastPoint.aruvam;
+      const netArivu = resources.arivu - lastPoint.arivu;
+
+      const newPoint: TrendDataPoint = {
+        dayLabel: `Day ${nextDay}`,
+        dayNumber: nextDay,
+        aruvam: resources.aruvam,
+        arivu: resources.arivu,
+        aruvamNet: netAruvam,
+        arivuNet: netArivu,
+        weatherName: nextWeather.name
+      };
+
+      const updated = [...prev, newPoint];
+      return updated.slice(-10);
+    });
+
     addToast({
-      title: `Monsoon Weather Shift: Day ${currentDay + 1}`,
+      title: `Monsoon Weather Shift: Day ${nextDay}`,
       description: `${nextWeather.name} (${nextWeather.tamilName}) • ${nextWeather.description}`,
       icon: nextWeather.icon,
       type: 'monsoon'
@@ -749,118 +811,176 @@ export default function App() {
 
       {/* RESOURCE PILLARS HUD */}
 
-      <section id="resources-hud" className="grid grid-cols-2 md:grid-cols-5 gap-3 p-6 bg-[#1C1713] border-b-2 border-[#D2691E]/30">
+      <section id="resources-hud" className="p-4 bg-[#1C1713] border-b-2 border-[#D2691E]/30 space-y-3">
         
-        {/* Aruvam (Wealth) */}
-        <div id="resource-card-aruvam" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="resource-icon-float w-8 h-8 rounded bg-[#D4AF37] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">🪙</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aruvam (Wealth)</div>
-            <div id="resource-val-aruvam" className="text-base font-mono font-bold text-[#D4AF37] inline-block">{resources.aruvam}</div>
-          </div>
+        <div className="flex items-center justify-between px-1 text-xs font-mono">
+          <span className="text-[#D4AF37] font-bold uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-[#D2691E]" /> Imperial Resource Pillars (அரசு வளங்கள்)
+          </span>
+
+          {/* Interactive Chart Trigger Button */}
+          <button
+            id="btn-open-economic-trends"
+            onClick={() => {
+              audio.playYazh(520);
+              setIsTrendChartOpen(true);
+            }}
+            className="px-3 py-1 rounded bg-[#2D241E] border border-[#D4AF37]/50 hover:bg-[#3D3028] text-[#D4AF37] hover:text-amber-200 transition font-bold flex items-center gap-1.5 cursor-pointer shadow group"
+            title="Open 10-Day Recharts Economic Trend Monitor for Aruvam & Arivu"
+          >
+            <Activity className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span>10-Day Economic Trends</span>
+            <span className="text-[10px] bg-[#120F0D] text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/30">
+              📊 Chart
+            </span>
+          </button>
         </div>
 
-        {/* Arivu (Knowledge) */}
-        <div id="resource-card-arivu" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="resource-icon-float w-8 h-8 rounded bg-[#4A90E2] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">👁️</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Arivu (Knowledge)</div>
-            <div id="resource-val-arivu" className="text-base font-mono font-bold text-[#4A90E2] inline-block">{resources.arivu}</div>
-          </div>
-        </div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          
+          {/* Aruvam (Wealth) - Clickable to open Recharts Trend */}
+          <button
+            id="resource-card-aruvam"
+            onClick={() => {
+              audio.playYazh(440);
+              setIsTrendChartOpen(true);
+            }}
+            className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 hover:border-[#D4AF37] hover:bg-[#3D3028] transition flex items-center justify-between gap-2 text-left cursor-pointer group shadow"
+            title="Click to view 10-Day Aruvam Wealth Growth Chart"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="resource-icon-float w-8 h-8 rounded bg-[#D4AF37] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">🪙</div>
+              <div>
+                <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400 flex items-center gap-1">
+                  Aruvam (Wealth)
+                </div>
+                <div id="resource-val-aruvam" className="text-base font-mono font-bold text-[#D4AF37] inline-block">{resources.aruvam}</div>
+              </div>
+            </div>
+            <TrendingUp className="w-4 h-4 text-emerald-400 opacity-60 group-hover:opacity-100 group-hover:scale-110 transition" />
+          </button>
 
-        {/* Anbu (Culture/Devotion) */}
-        <div id="resource-card-anbu" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="resource-icon-float w-8 h-8 rounded bg-[#FF6B6B] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">🪷</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Anbu (Devotion)</div>
-            <div id="resource-val-anbu" className="text-base font-mono font-bold text-[#FF6B6B] inline-block">{resources.anbu}</div>
-          </div>
-        </div>
+          {/* Arivu (Knowledge) - Clickable to open Recharts Trend */}
+          <button
+            id="resource-card-arivu"
+            onClick={() => {
+              audio.playYazh(440);
+              setIsTrendChartOpen(true);
+            }}
+            className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 hover:border-[#38BDF8] hover:bg-[#3D3028] transition flex items-center justify-between gap-2 text-left cursor-pointer group shadow"
+            title="Click to view 10-Day Arivu Knowledge Growth Chart"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="resource-icon-float w-8 h-8 rounded bg-[#4A90E2] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">👁️</div>
+              <div>
+                <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400 flex items-center gap-1">
+                  Arivu (Knowledge)
+                </div>
+                <div id="resource-val-arivu" className="text-base font-mono font-bold text-[#4A90E2] inline-block">{resources.arivu}</div>
+              </div>
+            </div>
+            <TrendingUp className="w-4 h-4 text-sky-400 opacity-60 group-hover:opacity-100 group-hover:scale-110 transition" />
+          </button>
 
-        {/* Aalavan (Power/Soldiers) */}
-        <div id="resource-card-aalavan" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
-          <div className="resource-icon-float w-8 h-8 rounded bg-[#8B0000] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">⚔️</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aalavan (Power)</div>
-            <div id="resource-val-aalavan" className="text-base font-mono font-bold text-red-500 inline-block">{resources.aalavan}</div>
-          </div>
-        </div>
-
-        {/* Workers Status */}
-        <div id="resource-card-workers" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3 col-span-2 md:col-span-1">
-          <div className="resource-icon-float w-8 h-8 rounded bg-[#D2691E] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">👷</div>
-          <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers (Idle/Total)</div>
-            <div id="resource-val-workers" className="text-sm font-mono font-bold text-stone-200 inline-block">
-              <span className="text-[#D2691E] text-base">{availableWorkers}</span> / {totalWorkers}
+          {/* Anbu (Culture/Devotion) */}
+          <div id="resource-card-anbu" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+            <div className="resource-icon-float w-8 h-8 rounded bg-[#FF6B6B] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">🪷</div>
+            <div>
+              <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Anbu (Devotion)</div>
+              <div id="resource-val-anbu" className="text-base font-mono font-bold text-[#FF6B6B] inline-block">{resources.anbu}</div>
             </div>
           </div>
+
+          {/* Aalavan (Power/Soldiers) */}
+          <div id="resource-card-aalavan" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+            <div className="resource-icon-float w-8 h-8 rounded bg-[#8B0000] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">⚔️</div>
+            <div>
+              <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aalavan (Power)</div>
+              <div id="resource-val-aalavan" className="text-base font-mono font-bold text-red-500 inline-block">{resources.aalavan}</div>
+            </div>
+          </div>
+
+          {/* Workers Status */}
+          <div id="resource-card-workers" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3 col-span-2 md:col-span-1">
+            <div className="resource-icon-float w-8 h-8 rounded bg-[#D2691E] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">👷</div>
+            <div>
+              <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers (Idle/Total)</div>
+              <div id="resource-val-workers" className="text-sm font-mono font-bold text-stone-200 inline-block">
+                <span className="text-[#D2691E] text-base">{availableWorkers}</span> / {totalWorkers}
+              </div>
+            </div>
+          </div>
+
         </div>
 
       </section>
 
       {/* CORE NAVIGATION INTERACTIVE TABS */}
-      <nav id="game-navigation-tabs" className="flex border-b-2 border-[#D2691E]/30 bg-[#1C1713]/80">
+      <nav id="game-navigation-tabs" className="flex flex-wrap border-b-2 border-[#D2691E]/30 bg-[#1C1713]/90 backdrop-blur-sm sticky top-0 z-30">
         
         <button
           id="tab-campaign"
           onClick={() => { audio.playYazh(293.66); setActiveTab('campaign'); }}
-          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+          className={`flex-1 min-w-[140px] py-3 px-2 text-center text-xs font-mono font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'campaign' 
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold shadow' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          🏰 Thanjavur Temple Campaign
+          <span>🏰 Thanjavur Campaign</span>
+          <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 bg-black/60 text-[#D4AF37] rounded border border-stone-700 font-mono">1</kbd>
         </button>
 
         <button
           id="tab-grid"
           onClick={() => { audio.playYazh(329.63); setActiveTab('grid'); }}
-          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+          className={`flex-1 min-w-[140px] py-3 px-2 text-center text-xs font-mono font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'grid' 
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold shadow' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          🗺️ Nagara City Planner
+          <span>🗺️ Nagara Grid</span>
+          <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 bg-black/60 text-[#D4AF37] rounded border border-stone-700 font-mono">2</kbd>
         </button>
 
         <button
           id="tab-port"
           onClick={() => { audio.playYazh(349.23); setActiveTab('port'); }}
-          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+          className={`flex-1 min-w-[140px] py-3 px-2 text-center text-xs font-mono font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'port' 
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold shadow' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          ⛵ Nagapattinam Trade Port
+          <span>⛵ Port Fleet</span>
+          <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 bg-black/60 text-[#D4AF37] rounded border border-stone-700 font-mono">3</kbd>
         </button>
 
         <button
           id="tab-tech"
           onClick={() => { audio.playYazh(392.00); setActiveTab('tech'); }}
-          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+          className={`flex-1 min-w-[140px] py-3 px-2 text-center text-xs font-mono font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'tech' 
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold shadow' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          📜 Olai Chuvadi Technologies
+          <span>📜 Tech Tree</span>
+          <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 bg-black/60 text-[#D4AF37] rounded border border-stone-700 font-mono">4</kbd>
         </button>
 
         <button
           id="tab-voxel"
           onClick={() => { audio.playYazh(440.00); setActiveTab('voxel'); }}
-          className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
+          className={`flex-1 min-w-[140px] py-3 px-2 text-center text-xs font-mono font-bold uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
             activeTab === 'voxel' 
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold shadow' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          🧊 MagicaVoxel Studio (MCP)
+          <span>🧊 3D Voxel Studio</span>
+          <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 bg-black/60 text-[#D4AF37] rounded border border-stone-700 font-mono">5</kbd>
         </button>
 
       </nav>
@@ -943,45 +1063,17 @@ export default function App() {
         </div>
       </footer>
 
-      {/* TUTORIAL SCROLL / COPPER PLATE MODAL */}
-      <CopperPlateModal
+      {/* INTERACTIVE GAME GUIDE & WALKTHROUGH MODAL */}
+      <GameGuideModal
         isOpen={isHelpOpen}
         onClose={() => { audio.playBell(); setIsHelpOpen(false); }}
-        title="Royal Proclamation of the Emperor"
-        tamilTitle="இராசராச சோழன் திருமுகம்"
-      >
-        <div className="space-y-4">
-          <p className="italic">
-            "To our esteemed Architect, we decree the construction of the Peruvudaiyar Temple (Brihadeeswarar) in our capital, Thanjavur."
-          </p>
-          
-          <h4 className="font-serif font-semibold text-amber-300 border-b border-amber-950 pb-1 mt-4">
-            How to Command the Empire:
-          </h4>
-          
-          <ul className="list-disc pl-5 space-y-2 text-stone-300">
-            <li>
-              <strong>Pillars of Society:</strong> Balance <strong>Aruvam</strong> (Wealth), <strong>Arivu</strong> (Knowledge), <strong>Anbu</strong> (Culture), and <strong>Aalavan</strong> (Military Force).
-            </li>
-            <li>
-              <strong>The Nagara Planner:</strong> Zone agricultural fields near the Cauvery river or build <EpigraphTerm termId="eri_irrigation" onOpen={handleOpenEpigraph}>Eri reservoirs</EpigraphTerm>. Crop yields will double under irrigation!
-            </li>
-            <li>
-              <strong>The Trade Fleets:</strong> Dock ships at <strong>Nagapattinam Port</strong> and dispatch heavy <EpigraphTerm termId="kadal_pira" onOpen={handleOpenEpigraph}>Kadal Pira</EpigraphTerm> navy vessels to Sri Lanka, Srivijaya, and China.
-            </li>
-            <li>
-              <strong>Democracy & Records:</strong> Discover the ancient <EpigraphTerm termId="kudavolai" onOpen={handleOpenEpigraph}>Kudavolai electoral pot ballot</EpigraphTerm> system and <EpigraphTerm termId="meikirthi" onOpen={handleOpenEpigraph}>Meikirthi stone archives</EpigraphTerm>.
-            </li>
-            <li>
-              <strong>Campaign Mission:</strong> Step through the 4 phases to excavate granite, research the Elephant Ramp, catch spies, and host the spectacular Consecration!
-            </li>
-          </ul>
-
-          <div className="p-3 rounded bg-amber-500/5 border border-amber-500/10 text-[11px] leading-relaxed text-amber-300/80">
-            🔔 <strong>Tip:</strong> Keep your sound turned up! Plucks of the Yazh, strikes of temple bells, and the thuds of the mridangam accompany your royal commands.
-          </div>
-        </div>
-      </CopperPlateModal>
+        onNavigateTab={(tab) => {
+          setActiveTab(tab);
+          audio.playYazh(440);
+        }}
+        onOpenEpigraphs={handleOpenEpigraph}
+        onOpenTrends={() => setIsTrendChartOpen(true)}
+      />
 
       {/* TOAST NOTIFICATIONS CONTAINER */}
       <ToastNotification toasts={toasts} onDismiss={removeToast} />
@@ -991,6 +1083,16 @@ export default function App() {
         isOpen={isEpigraphModalOpen}
         onClose={() => setIsEpigraphModalOpen(false)}
         initialTermId={selectedEpigraphTermId}
+      />
+
+      {/* RECHARTS RESOURCE TREND MONITOR MODAL */}
+      <ResourceTrendChart
+        trendData={trendData}
+        currentDay={currentDay}
+        currentAruvam={resources.aruvam}
+        currentArivu={resources.arivu}
+        isOpen={isTrendChartOpen}
+        onClose={() => setIsTrendChartOpen(false)}
       />
 
     </div>
