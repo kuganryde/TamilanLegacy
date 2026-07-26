@@ -10,32 +10,17 @@ export interface Resources {
   aalavan: number;    // Power / Military Influence
 }
 
-export type ZoneType =
-  | 'empty' | 'ur' | 'nagar' | 'kovil' | 'eri' | 'river' | 'quarry'
-  | 'shipyard' | 'warehouse' | 'barracks';
-
-export type AnimalKind = 'elephant' | 'ox' | null;
+export type ZoneType = 'empty' | 'ur' | 'nagar' | 'kovil' | 'eri' | 'river' | 'quarry';
 
 export interface GridCell {
   id: string;
   row: number;
   col: number;
   type: ZoneType;
-  level: number;       // For building upgrades / field expansion
+  level: number;       // For building upgrades
   hasWater: boolean;   // Eri irrigation link
   assignedWorkers: number;
-  assignedAnimals: number; // Draft animals (kind implied by zone type)
 }
-
-// Owned draft animals available to deploy across the city.
-export interface Livestock {
-  elephants: number;
-  oxen: number;
-}
-
-// Era 1 (Sangam Age) military roster.
-export type UnitKind = 'warrior' | 'archer' | 'spearman' | 'cavalry';
-export type Army = Record<UnitKind, number>;
 
 export interface TradeRoute {
   id: string;
@@ -105,3 +90,24 @@ export interface CampaignState {
   culturalHarmony: number; // 0 to 100
   guildDemands: GuildDemand[];
 }
+
+export type MonsoonWeatherType = 
+  | 'clear' 
+  | 'southwest_rain' 
+  | 'northeast_cyclone' 
+  | 'golden_rain' 
+  | 'summer_drought';
+
+export interface MonsoonWeather {
+  type: MonsoonWeatherType;
+  name: string;
+  tamilName: string;
+  description: string;
+  icon: string;
+  cropYieldMultiplier: number;     // e.g. 1.5 (+50%), 0.7 (-30%)
+  maritimeRiskModifier: number;    // e.g. +20 (+20% risk), -10 (-10% risk)
+  maritimeDurationMultiplier: number; // e.g. 1.2 (+20% time), 0.85 (-15% time)
+  bgGradient: string;
+  badgeColor: string;
+}
+

@@ -3,83 +3,43 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
-import { Resources, GridCell, TechNode, CampaignState, ZoneType, AnimalKind, Livestock, Army, UnitKind } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import * as animeModule from 'animejs';
+
+function getAnime(): any {
+  let a: any = animeModule;
+  while (a && typeof a !== 'function' && a.default) {
+    a = a.default;
+  }
+  return a;
+}
+
+const anime: any = (...args: any[]) => {
+  const instance = getAnime();
+  if (typeof instance === 'function') {
+    return instance(...args);
+  }
+  return null;
+};
+
+import { Resources, GridCell, TechNode, CampaignState, ZoneType, MonsoonWeather } from './types';
 import NagaraGrid from './components/NagaraGrid';
 import PortCityMiniGame from './components/PortCityMiniGame';
 import PalmLeafTechTree from './components/PalmLeafTechTree';
 import ThanjavurCampaign from './components/ThanjavurCampaign';
 import CopperPlateModal from './components/CopperPlateModal';
-import Toaster from './components/Toaster';
-import WarCouncil from './components/WarCouncil';
-import { UNIT_META, INITIAL_ARMY, UNIT_ORDER, armyStrength } from './data/units';
+import MonsoonWeatherBanner from './components/MonsoonWeatherBanner';
+import MagicaVoxelStudio from './components/MagicaVoxelStudio';
+import EpigraphicalDatabase, { EpigraphTerm } from './components/EpigraphicalDatabase';
+import ToastNotification, { ToastItem } from './components/ToastNotification';
+import { MONSOON_WEATHER_LIST, getRandomMonsoonWeather } from './utils/monsoon';
 import { audio } from './utils/audio';
-import { toast } from './utils/toast';
-import {
-  Coins, BookOpen, Heart, Shield, Users,
-  Volume2, VolumeX, HelpCircle, RefreshCw,
-  Sparkles, Globe, Compass, Landmark, TrendingUp
+import { 
+  Coins, BookOpen, Heart, Shield, Users, 
+  Volume2, VolumeX, HelpCircle, RefreshCw, 
+  Sparkles, Globe, Compass, Landmark, ScrollText
 } from 'lucide-react';
 
-// Which draft animal a zone employs (null = none).
-export const animalFor = (type: ZoneType): AnimalKind => {
-  if (type === 'ur') return 'ox';
-  if (type === 'quarry' || type === 'kovil' || type === 'shipyard') return 'elephant';
-  return null;
-};
-
-// Cost (in Aruvam gold) to zone each build type.
-export const ZONE_COST: Partial<Record<ZoneType, number>> = {
-  ur: 50, nagar: 120, kovil: 250, eri: 100,
-  shipyard: 200, warehouse: 150, barracks: 180,
-};
-
-// Pure per-tick income from the whole grid — shared by the game loop and the
-// HUD rate read-out so the numbers the player sees always match what accrues.
-export function computeIncome(
-  grid: GridCell[],
-  opts: { availableWorkers: number; koothu: boolean; raidsActive: boolean },
-): Resources {
-  let aruvam = 0, arivu = 0, anbu = 0, aalavan = 0;
-  arivu += Math.max(1, Math.round(opts.availableWorkers * 0.8)); // idle scholars
-  for (const cell of grid) {
-    const w = cell.assignedWorkers;
-    const a = cell.assignedAnimals;
-    const lvl = Math.max(1, cell.level);
-    switch (cell.type) {
-      case 'ur': {
-        const water = cell.hasWater ? 2 : 1;
-        aruvam += Math.round(w * 8 * water * lvl * (1 + a * 0.35)); // ploughing oxen
-        break;
-      }
-      case 'nagar': {
-        aruvam += Math.round(w * 14 * lvl * (opts.koothu ? 1.5 : 1));
-        aalavan += Math.round(lvl * 0.5);
-        break;
-      }
-      case 'kovil': {
-        anbu += Math.round(w * 10 * lvl * (1 + a * 0.3));           // temple elephants
-        arivu += Math.round(lvl * 2);
-        break;
-      }
-      case 'warehouse':
-        aruvam += Math.round(6 * lvl + w * 3);                      // stored goods traded
-        arivu += 1;
-        break;
-      case 'shipyard':
-        aruvam += Math.round((5 * lvl + w * 4) * (1 + a * 0.25));   // hauling elephants
-        arivu += lvl;
-        break;
-      case 'barracks':
-        aalavan += Math.round(3 * lvl + w * 2);
-        break;
-      default: break;
-    }
-  }
-  aalavan += 1; // slow default gain
-  if (opts.raidsActive) aruvam = Math.round(aruvam * 0.5);
-  return { aruvam, arivu, anbu, aalavan };
-}
 
 // Starting values
 const INITIAL_RESOURCES: Resources = {
@@ -88,8 +48,6 @@ const INITIAL_RESOURCES: Resources = {
   anbu: 10,      // Culture
   aalavan: 30,   // Influence
 };
-
-const INITIAL_LIVESTOCK: Livestock = { elephants: 2, oxen: 3 };
 
 const INITIAL_GRID = (): GridCell[] => {
   const cells: GridCell[] = [];
@@ -117,7 +75,6 @@ const INITIAL_GRID = (): GridCell[] => {
         level: type === 'empty' ? 0 : 1,
         hasWater,
         assignedWorkers: 0,
-        assignedAnimals: 0,
       });
     }
   }
@@ -294,11 +251,86 @@ export default function App() {
   const [grid, setGrid] = useState<GridCell[]>(INITIAL_GRID());
   const [techs, setTechs] = useState<TechNode[]>(INITIAL_TECHS);
   const [campaign, setCampaign] = useState<CampaignState>(INITIAL_CAMPAIGN);
-  const [livestock, setLivestock] = useState<Livestock>(INITIAL_LIVESTOCK);
-  const [army, setArmy] = useState<Army>(INITIAL_ARMY);
-  const [activeTab, setActiveTab] = useState<'campaign' | 'grid' | 'port' | 'tech' | 'army'>('campaign');
+  const [activeTab, setActiveTab] = useState<'campaign' | 'grid' | 'port' | 'tech' | 'voxel'>('campaign');
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isEpigraphModalOpen, setIsEpigraphModalOpen] = useState<boolean>(false);
+  const [selectedEpigraphTermId, setSelectedEpigraphTermId] = useState<string | null>(null);
+
+  const handleOpenEpigraph = (termId?: string) => {
+    audio.playYazh(440);
+    if (termId) setSelectedEpigraphTermId(termId);
+    setIsEpigraphModalOpen(true);
+  };
+
+  // Monsoon Weather & Day Progression States
+  const [currentDay, setCurrentDay] = useState<number>(1);
+  const [monsoonWeather, setMonsoonWeather] = useState<MonsoonWeather>(MONSOON_WEATHER_LIST.clear);
+  const [timeUntilNextDay, setTimeUntilNextDay] = useState<number>(60); // 60 seconds per day cycle
+
+  // Toast Notifications System
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = (toast: Omit<ToastItem, 'id'>) => {
+    const id = `toast-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    setToasts(prev => [...prev.slice(-4), { ...toast, id }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Observe Campaign Phase Transitions
+  const isInitialPhaseMount = useRef(true);
+  const prevPhaseRef = useRef<string>(campaign.currentPhase);
+
+  useEffect(() => {
+    if (isInitialPhaseMount.current) {
+      isInitialPhaseMount.current = false;
+      prevPhaseRef.current = campaign.currentPhase;
+      return;
+    }
+
+    if (prevPhaseRef.current !== campaign.currentPhase) {
+      const phaseDetails: Record<string, { title: string; desc: string; icon: string }> = {
+        foundation: {
+          title: "Phase 1: Foundation & Quarries",
+          desc: "Extract granite blocks from the quarries and irrigate Cauvery paddy fields.",
+          icon: "⛏️"
+        },
+        capstone: {
+          title: "Phase 2: The Capstone & Elephant Ramp",
+          desc: "Construct the inclined earth ramp and drag the 80-ton Kumbam stone to the apex!",
+          icon: "🐘"
+        },
+        shadows: {
+          title: "Phase 3: Shadows in the City",
+          desc: "Thwart Chalukya saboteurs and defend granaries with Chola military force.",
+          icon: "⚔️"
+        },
+        consecration: {
+          title: "Phase 4: Consecration & Harmony",
+          desc: "Satisfy guild demands and conduct the grand temple consecration ceremony!",
+          icon: "🏛️"
+        }
+      };
+
+      const info = phaseDetails[campaign.currentPhase] || {
+        title: `Campaign Phase Advanced: ${campaign.currentPhase.toUpperCase()}`,
+        desc: "A major milestone in Raja Raja Chola's temple campaign has been reached!",
+        icon: "👑"
+      };
+
+      addToast({
+        title: info.title,
+        description: info.desc,
+        icon: info.icon,
+        type: 'campaign'
+      });
+
+      prevPhaseRef.current = campaign.currentPhase;
+    }
+  }, [campaign.currentPhase]);
 
   // Read state from LocalStorage on mount
   useEffect(() => {
@@ -306,19 +338,35 @@ export default function App() {
     const savedGrid = localStorage.getItem('chola_grid');
     const savedTechs = localStorage.getItem('chola_techs');
     const savedCampaign = localStorage.getItem('chola_campaign');
-    const savedLivestock = localStorage.getItem('chola_livestock');
-    const savedArmy = localStorage.getItem('chola_army');
+    const savedDay = localStorage.getItem('chola_day');
+    const savedWeather = localStorage.getItem('chola_weather');
 
     if (savedResources) setResources(JSON.parse(savedResources));
-    if (savedGrid) {
-      // Migrate older saves that predate assignedAnimals.
-      const parsed: GridCell[] = JSON.parse(savedGrid);
-      setGrid(parsed.map(c => ({ ...c, assignedAnimals: c.assignedAnimals ?? 0 })));
-    }
+    if (savedGrid) setGrid(JSON.parse(savedGrid));
     if (savedTechs) setTechs(JSON.parse(savedTechs));
     if (savedCampaign) setCampaign(JSON.parse(savedCampaign));
-    if (savedLivestock) setLivestock(JSON.parse(savedLivestock));
-    if (savedArmy) setArmy({ ...INITIAL_ARMY, ...JSON.parse(savedArmy) });
+    if (savedDay) setCurrentDay(JSON.parse(savedDay));
+    if (savedWeather) setMonsoonWeather(JSON.parse(savedWeather));
+  }, []);
+
+  // Gentle floating animation for resource HUD icons using Anime.js
+  useEffect(() => {
+    const floatAnimation = anime({
+      targets: '.resource-icon-float',
+      translateY: [-4, 4],
+      rotate: [-3, 3],
+      duration: 2200,
+      direction: 'alternate',
+      loop: true,
+      easing: 'easeInOutSine',
+      delay: (_: any, i: number) => i * 250
+    });
+
+    return () => {
+      if (floatAnimation && typeof floatAnimation.pause === 'function') {
+        floatAnimation.pause();
+      }
+    };
   }, []);
 
   // Save state on modification
@@ -327,28 +375,90 @@ export default function App() {
     localStorage.setItem('chola_grid', JSON.stringify(grid));
     localStorage.setItem('chola_techs', JSON.stringify(techs));
     localStorage.setItem('chola_campaign', JSON.stringify(campaign));
-    localStorage.setItem('chola_livestock', JSON.stringify(livestock));
-    localStorage.setItem('chola_army', JSON.stringify(army));
-  }, [resources, grid, techs, campaign, livestock, army]);
+    localStorage.setItem('chola_day', JSON.stringify(currentDay));
+    localStorage.setItem('chola_weather', JSON.stringify(monsoonWeather));
+  }, [resources, grid, techs, campaign, currentDay, monsoonWeather]);
+
+  // Anime.js Resource Pulse & Color Glow on Tick
+  const prevResourcesRef = useRef<Resources>(resources);
+
+  useEffect(() => {
+    const prev = prevResourcesRef.current;
+    const current = resources;
+
+    const keys: (keyof Resources)[] = ['aruvam', 'arivu', 'anbu', 'aalavan'];
+
+    keys.forEach(key => {
+      if (current[key] > prev[key]) {
+        const valEl = document.getElementById(`resource-val-${key}`);
+        const cardEl = document.getElementById(`resource-card-${key}`);
+
+        if (valEl) {
+          anime({
+            targets: valEl,
+            scale: [1, 1.4, 1],
+            translateY: [0, -3, 0],
+            duration: 550,
+            easing: 'easeOutElastic(1, .5)',
+          });
+        }
+
+        if (cardEl) {
+          anime({
+            targets: cardEl,
+            borderColor: ['rgba(210, 105, 30, 0.3)', '#FFD700', 'rgba(210, 105, 30, 0.3)'],
+            backgroundColor: ['#2D241E', '#3D3028', '#2D241E'],
+            duration: 550,
+            easing: 'easeOutQuad',
+          });
+        }
+      }
+    });
+
+    prevResourcesRef.current = resources;
+  }, [resources]);
+
+  // Advance Day & Shift Monsoon Weather
+  const handleAdvanceDay = () => {
+    setCurrentDay(prev => prev + 1);
+    const nextWeather = getRandomMonsoonWeather(monsoonWeather.type);
+    setMonsoonWeather(nextWeather);
+    setTimeUntilNextDay(60); // Reset 60s day cycle timer
+
+    addToast({
+      title: `Monsoon Weather Shift: Day ${currentDay + 1}`,
+      description: `${nextWeather.name} (${nextWeather.tamilName}) • ${nextWeather.description}`,
+      icon: nextWeather.icon,
+      type: 'monsoon'
+    });
+
+    if (nextWeather.type === 'northeast_cyclone' || nextWeather.type === 'southwest_rain') {
+      audio.playDrum(true);
+    } else {
+      audio.playBell();
+    }
+  };
+
+  // Day Cycle Countdown Timer (1 day = 60s)
+  useEffect(() => {
+    const dayTimer = setInterval(() => {
+      setTimeUntilNextDay(prev => {
+        if (prev <= 1) {
+          handleAdvanceDay();
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(dayTimer);
+  }, [monsoonWeather.type]);
 
   // Determine available and total workers
   const isHerbalRemediesUnlocked = techs.find(t => t.id === 'siddha1')?.unlocked || false;
   const totalWorkers = 12 + (isHerbalRemediesUnlocked ? 3 : 0);
   const assignedWorkers = grid.reduce((acc, cell) => acc + cell.assignedWorkers, 0);
   const availableWorkers = Math.max(0, totalWorkers - assignedWorkers);
-
-  // Draft-animal availability (assigned counts by the animal each zone uses)
-  const assignedElephants = grid.reduce((s, c) => s + (animalFor(c.type) === 'elephant' ? c.assignedAnimals : 0), 0);
-  const assignedOxen = grid.reduce((s, c) => s + (animalFor(c.type) === 'ox' ? c.assignedAnimals : 0), 0);
-  const availableElephants = Math.max(0, livestock.elephants - assignedElephants);
-  const availableOxen = Math.max(0, livestock.oxen - assignedOxen);
-
-  // Building tally for the HUD.
-  const buildingCount = grid.reduce((n, c) =>
-    n + (['nagar', 'kovil', 'warehouse', 'shipyard', 'barracks'].includes(c.type) ? 1 : 0), 0);
-  const shipyardCount = grid.reduce((n, c) => n + (c.type === 'shipyard' ? 1 : 0), 0);
-  const barracksCount = grid.reduce((n, c) => n + (c.type === 'barracks' ? 1 : 0), 0);
-  const militaryStrength = armyStrength(army);
 
   // Active modifiers
   const isSanctuaryHospitalUnlocked = techs.find(t => t.id === 'siddha2')?.unlocked || false;
@@ -358,163 +468,118 @@ export default function App() {
   const isKoothuTheatresUnlocked = techs.find(t => t.id === 'arts2')?.unlocked || false;
   const isRampUnlocked = techs.find(t => t.id === 'vastu1')?.unlocked || false;
 
-  // Live per-tick income shown on the HUD (mirrors the game loop exactly).
-  const incomeRate = computeIncome(grid, {
-    availableWorkers,
-    koothu: isKoothuTheatresUnlocked,
-    raidsActive: campaign.currentPhase === 'shadows' && campaign.activeRaids > 0,
-  });
-
   // Primary Game Ticking Loop (runs every 3 seconds)
   useEffect(() => {
     const interval = setInterval(() => {
-      const inc = computeIncome(grid, {
-        availableWorkers,
-        koothu: isKoothuTheatresUnlocked,
-        raidsActive: campaign.currentPhase === 'shadows' && campaign.activeRaids > 0,
+      setResources(prev => {
+        let aruvamIncome = 0;
+        let anbuIncome = 0;
+        let arivuIncome = 0;
+        let aalavanIncome = 0;
+
+        // Idle workers generate Arivu (Knowledge) by reading manuscripts
+        arivuIncome += Math.max(1, Math.round(availableWorkers * 0.8));
+
+        grid.forEach(cell => {
+          if (cell.assignedWorkers > 0) {
+            if (cell.type === 'ur') {
+              // Agricultural Ur Zone (affected by Monsoon Weather & Eri Irrigation)
+              let monsoonMult = monsoonWeather.cropYieldMultiplier;
+              // Eri irrigation buffers field against drought or storm floods!
+              if (cell.hasWater && monsoonMult < 1.0) {
+                monsoonMult = 1.0;
+              }
+              const yieldMultiplier = (cell.hasWater ? 2.0 : 1.0) * monsoonMult;
+              aruvamIncome += Math.round(cell.assignedWorkers * 8 * yieldMultiplier);
+            } else if (cell.type === 'nagar') {
+              // Market Nagar Zone
+              const marketMultiplier = isKoothuTheatresUnlocked ? 1.5 : 1.0;
+              aruvamIncome += Math.round(cell.assignedWorkers * 14 * cell.level * marketMultiplier);
+              aalavanIncome += Math.round(cell.level * 0.5); // high density generates influence
+            } else if (cell.type === 'kovil') {
+              // Spiritual Temple Zone
+              anbuIncome += Math.round(cell.assignedWorkers * 10 * cell.level);
+              arivuIncome += Math.round(cell.level * 2);
+            }
+          }
+        });
+
+        // Penalize incomes if bandit raids are active in Phase 3
+        if (campaign.currentPhase === 'shadows' && campaign.activeRaids > 0) {
+          aruvamIncome = Math.round(aruvamIncome * 0.5); // 50% crop losses
+        }
+
+        return {
+          aruvam: prev.aruvam + aruvamIncome,
+          arivu: prev.arivu + arivuIncome,
+          anbu: prev.anbu + anbuIncome,
+          aalavan: Math.min(200, prev.aalavan + aalavanIncome + 1), // slow default gain
+        };
       });
-      setResources(prev => ({
-        aruvam: prev.aruvam + inc.aruvam,
-        arivu: prev.arivu + inc.arivu,
-        anbu: prev.anbu + inc.anbu,
-        aalavan: Math.min(300, prev.aalavan + inc.aalavan),
-      }));
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [grid, availableWorkers, isKoothuTheatresUnlocked, campaign.currentPhase, campaign.activeRaids]);
+  }, [grid, availableWorkers, isKoothuTheatresUnlocked, campaign.currentPhase, campaign.activeRaids, monsoonWeather]);
 
-  // Labels + icons for progress toasts.
-  const ZONE_LABEL: Partial<Record<ZoneType, [string, string]>> = {
-    ur: ['Paddy field', '🌾'], nagar: ['Market', '🏬'], kovil: ['Temple', '🛕'],
-    eri: ['Eri reservoir', '💧'], shipyard: ['Shipyard', '⛴️'],
-    warehouse: ['Warehouse', '🏚️'], barracks: ['Barracks', '🛡️'],
-  };
 
   // Handle cell zoning updates
   const handleUpdateCell = (id: string, type: ZoneType) => {
-    let cost = ZONE_COST[type] ?? 0;
-    if (type === 'ur' && isSanctuaryHospitalUnlocked) cost = 25;
+    let cost = 0;
+    if (type === 'ur') cost = isSanctuaryHospitalUnlocked ? 25 : 50;
+    if (type === 'nagar') cost = 120;
+    if (type === 'kovil') cost = 250;
+    if (type === 'eri') cost = 100;
 
-    if (resources.aruvam < cost) {
-      audio.playDrum(true);
-      toast.push(`Need ${cost} gold to build the ${ZONE_LABEL[type]?.[0] ?? 'structure'}.`, { icon: '💰', kind: 'warn' });
-      return;
-    }
+    if (resources.aruvam < cost) return;
 
     setResources(prev => ({ ...prev, aruvam: prev.aruvam - cost }));
     setGrid(prev => {
-      const nextGrid = prev.map(cell =>
-        cell.id === id
-          ? { ...cell, type, level: 1, assignedWorkers: 0, assignedAnimals: 0 }
-          : cell,
-      );
+      const nextGrid = prev.map(cell => {
+        if (cell.id === id) {
+          return {
+            ...cell,
+            type,
+            level: 1,
+            assignedWorkers: 0, // Reset workers on zone change
+          };
+        }
+        return cell;
+      });
       return recalculateWater(nextGrid);
     });
-    const [label, icon] = ZONE_LABEL[type] ?? ['Structure', '🏗️'];
-    audio.playBell();
-    toast.push(`${label} built — ${cost} gold spent.`, { icon, kind: 'gold' });
   };
 
-  // Upgrade / expand a building or field.
+  // Upgrades
   const handleUpgradeCell = (id: string) => {
-    const cell = grid.find(c => c.id === id);
-    if (!cell || cell.level >= 3) return;
-    const cost = cell.level * 200;
-    if (resources.aruvam < cost) {
-      audio.playDrum(true);
-      toast.push(`Need ${cost} gold to ${cell.type === 'ur' ? 'expand this field' : 'upgrade'}.`, { icon: '💰', kind: 'warn' });
-      return;
-    }
-    const nextLvl = Math.min(3, cell.level + 1);
-    setResources(prev => ({ ...prev, aruvam: prev.aruvam - cost }));
-    setGrid(prev => prev.map(c => (c.id === id ? { ...c, level: nextLvl } : c)));
-    audio.playBell();
-    const verb = cell.type === 'ur' ? 'Field expanded' : `${ZONE_LABEL[cell.type]?.[0] ?? 'Structure'} upgraded`;
-    toast.push(`${verb} → Level ${nextLvl}`, { icon: '⬆️', kind: 'gold' });
+    setGrid(prev => {
+      return prev.map(cell => {
+        if (cell.id === id) {
+          const cost = cell.level * 200;
+          if (resources.aruvam >= cost) {
+            setResources(r => ({ ...r, aruvam: r.aruvam - cost }));
+            return {
+              ...cell,
+              level: Math.min(3, cell.level + 1),
+            };
+          }
+        }
+        return cell;
+      });
+    });
   };
 
   // Assign workers to specific cell
   const handleAssignWorkers = (id: string, change: number) => {
-    setGrid(prev => prev.map(cell => {
-      if (cell.id !== id) return cell;
-      return { ...cell, assignedWorkers: Math.max(0, cell.assignedWorkers + change) };
-    }));
-    if (change > 0) toast.push('👷 Worker deployed', { icon: '👷', kind: 'success' });
-  };
-
-  // Assign draft animals (elephants / oxen) to a cell, drawing from the pool.
-  const handleAssignAnimals = (id: string, change: number) => {
-    const cell = grid.find(c => c.id === id);
-    if (!cell) return;
-    const kind = animalFor(cell.type);
-    if (!kind) return;
-    if (change > 0) {
-      const avail = kind === 'elephant' ? availableElephants : availableOxen;
-      if (avail <= 0) {
-        audio.playDrum(true);
-        toast.push(`No idle ${kind === 'elephant' ? 'elephants' : 'oxen'} — acquire more first.`, { icon: kind === 'elephant' ? '🐘' : '🐂', kind: 'warn' });
-        return;
-      }
-    }
-    const next = Math.max(0, cell.assignedAnimals + change);
-    if (next === cell.assignedAnimals) return;
-    setGrid(prev => prev.map(c => (c.id === id ? { ...c, assignedAnimals: next } : c)));
-    audio.playDrum(false);
-    if (change > 0) toast.push(`${kind === 'elephant' ? '🐘 Elephant' : '🐂 Ox'} deployed`, { icon: kind === 'elephant' ? '🐘' : '🐂', kind: 'success' });
-  };
-
-  // Acquire draft animals from the royal stables.
-  const buyElephant = () => {
-    if (resources.aruvam < 250 || resources.aalavan < 10) {
-      audio.playDrum(true);
-      toast.push('A war elephant costs 250 gold + 10 power.', { icon: '🐘', kind: 'warn' });
-      return;
-    }
-    setResources(p => ({ ...p, aruvam: p.aruvam - 250, aalavan: p.aalavan - 10 }));
-    setLivestock(p => ({ ...p, elephants: p.elephants + 1 }));
-    audio.playBell();
-    toast.push('🐘 War elephant acquired from the royal stables', { icon: '🐘', kind: 'gold' });
-  };
-  const buyOx = () => {
-    if (resources.aruvam < 120) {
-      audio.playDrum(true);
-      toast.push('A plough ox costs 120 gold.', { icon: '🐂', kind: 'warn' });
-      return;
-    }
-    setResources(p => ({ ...p, aruvam: p.aruvam - 120 }));
-    setLivestock(p => ({ ...p, oxen: p.oxen + 1 }));
-    audio.playBell();
-    toast.push('🐂 Plough oxen added to the herd', { icon: '🐂', kind: 'gold' });
-  };
-
-  // Recruit a Sangam-age unit (requires a barracks; costs Aalavan + gold).
-  const recruitUnit = (kind: UnitKind) => {
-    if (barracksCount < 1) {
-      audio.playDrum(true);
-      toast.push('Build a Padai Veedu (Barracks) before recruiting.', { icon: '🛡️', kind: 'warn' });
-      return;
-    }
-    const u = UNIT_META[kind];
-    if (resources.aalavan < u.cost.aalavan || resources.aruvam < u.cost.aruvam) {
-      audio.playDrum(true);
-      toast.push(`Need ${u.cost.aalavan} power + ${u.cost.aruvam} gold for a ${u.name}.`, { icon: u.icon, kind: 'warn' });
-      return;
-    }
-    setResources(p => ({ ...p, aalavan: p.aalavan - u.cost.aalavan, aruvam: p.aruvam - u.cost.aruvam }));
-    setArmy(p => ({ ...p, [kind]: p[kind] + 1 }));
-    audio.playBell();
-    toast.push(`${u.icon} ${u.name} (${u.tamil}) mustered to the army`, { icon: u.icon, kind: 'gold' });
-  };
-
-  // Spend one standing unit to defend the city in Phase 3 (cheapest first).
-  const consumeDefender = (): boolean => {
-    const order: UnitKind[] = ['spearman', 'warrior', 'archer', 'cavalry'];
-    const kind = order.find(k => army[k] > 0);
-    if (!kind) return false;
-    setArmy(p => ({ ...p, [kind]: Math.max(0, p[kind] - 1) }));
-    toast.push(`${UNIT_META[kind].icon} ${UNIT_META[kind].name} answered the city's defence`, { icon: UNIT_META[kind].icon, kind: 'info' });
-    return true;
+    setGrid(prev => {
+      return prev.map(cell => {
+        if (cell.id === id) {
+          const current = cell.assignedWorkers;
+          const nextVal = Math.max(0, current + change);
+          return { ...cell, assignedWorkers: nextVal };
+        }
+        return cell;
+      });
+    });
   };
 
   // Spend generic resources validator
@@ -555,13 +620,30 @@ export default function App() {
     }));
   };
 
-  // Unlock tech node (deduct the Arivu cost exactly once)
+  // Unlock tech node
   const handleUnlockTech = (id: string) => {
     const techNode = techs.find(t => t.id === id);
-    if (!techNode || techNode.unlocked) return;
-    setTechs(prev => prev.map(t => (t.id === id ? { ...t, unlocked: true } : t)));
-    setResources(prev => ({ ...prev, arivu: Math.max(0, prev.arivu - techNode.cost) }));
-    toast.push(`📜 Researched: ${techNode.name}`, { icon: '✨', kind: 'gold' });
+    if (techNode && !techNode.unlocked) {
+      addToast({
+        title: `Olai Chuvadi Wisdom Unlocked!`,
+        description: `${techNode.name} (${techNode.tamilName}) • ${techNode.desc}`,
+        icon: '📜',
+        type: 'tech'
+      });
+    }
+
+    setTechs(prev =>
+      prev.map(t => {
+        if (t.id === id) {
+          return { ...t, unlocked: true };
+        }
+        return t;
+      })
+    );
+
+    if (techNode) {
+      setResources(prev => ({ ...prev, arivu: Math.max(0, prev.arivu - techNode.cost) }));
+    }
   };
 
   const handleToggleMute = () => {
@@ -576,11 +658,8 @@ export default function App() {
       setGrid(INITIAL_GRID());
       setTechs(INITIAL_TECHS);
       setCampaign(INITIAL_CAMPAIGN);
-      setLivestock(INITIAL_LIVESTOCK);
-      setArmy(INITIAL_ARMY);
       setActiveTab('campaign');
       localStorage.clear();
-      toast.push('Empire reset to Year 985 AD.', { icon: '🔄', kind: 'info' });
     }
   };
 
@@ -618,7 +697,17 @@ export default function App() {
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Epigraphical Database Button */}
+          <button
+            id="btn-open-epigraphs"
+            onClick={() => handleOpenEpigraph('meikirthi')}
+            className="p-2 px-3 rounded bg-[#2D241E] border border-[#D4AF37]/50 hover:bg-[#3D3028] text-[#D4AF37] transition flex items-center gap-1.5 text-xs font-mono font-bold cursor-pointer shadow"
+            title="Inspect Chola Royal Inscriptions Database"
+          >
+            <ScrollText className="w-4 h-4 text-[#D2691E]" /> Epigraphs (கல்வெட்டு)
+          </button>
+
           {/* Audio toggle */}
           <button
             id="btn-toggle-mute"
@@ -650,58 +739,62 @@ export default function App() {
         </div>
       </header>
 
+      {/* MONSOON WEATHER SYSTEM BANNER */}
+      <MonsoonWeatherBanner
+        weather={monsoonWeather}
+        currentDay={currentDay}
+        timeUntilNextDay={timeUntilNextDay}
+        onAdvanceDay={handleAdvanceDay}
+      />
+
       {/* RESOURCE PILLARS HUD */}
-      <section id="resources-hud" className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 p-6 bg-[#1C1713] border-b-2 border-[#D2691E]/30">
 
-        {([
-          { key: 'aruvam', label: 'Aruvam (Wealth)', icon: '🪙', chip: 'bg-[#D4AF37]', text: 'text-[#D4AF37]', rate: incomeRate.aruvam },
-          { key: 'arivu', label: 'Arivu (Knowledge)', icon: '👁️', chip: 'bg-[#4A90E2]', text: 'text-[#4A90E2]', rate: incomeRate.arivu },
-          { key: 'anbu', label: 'Anbu (Devotion)', icon: '🪷', chip: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', rate: incomeRate.anbu },
-          { key: 'aalavan', label: 'Aalavan (Power)', icon: '⚔️', chip: 'bg-[#8B0000]', text: 'text-red-500', rate: incomeRate.aalavan },
-        ] as const).map(r => (
-          <div key={r.key} className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title={`${r.label}: +${r.rate} every 3s`}>
-            <div className={`w-8 h-8 rounded ${r.chip} flex items-center justify-center text-black text-lg font-bold shadow-md`}>{r.icon}</div>
-            <div className="min-w-0">
-              <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400 truncate">{r.label}</div>
-              <div className="flex items-baseline gap-1.5">
-                <span className={`text-base font-mono font-bold ${r.text}`}>{(resources[r.key as keyof Resources] as number).toLocaleString()}</span>
-                <span className={`text-[10px] font-mono font-bold flex items-center gap-0.5 ${r.rate > 0 ? 'text-emerald-400' : 'text-stone-600'}`}>
-                  <TrendingUp className="w-2.5 h-2.5" />+{r.rate}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {/* Workers */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Idle / total workers">
-          <div className="w-8 h-8 rounded bg-[#D2691E] flex items-center justify-center text-black text-lg font-bold shadow-md">👷</div>
+      <section id="resources-hud" className="grid grid-cols-2 md:grid-cols-5 gap-3 p-6 bg-[#1C1713] border-b-2 border-[#D2691E]/30">
+        
+        {/* Aruvam (Wealth) */}
+        <div id="resource-card-aruvam" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+          <div className="resource-icon-float w-8 h-8 rounded bg-[#D4AF37] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">🪙</div>
           <div>
-            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers</div>
-            <div className="text-sm font-mono font-bold text-stone-200">
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aruvam (Wealth)</div>
+            <div id="resource-val-aruvam" className="text-base font-mono font-bold text-[#D4AF37] inline-block">{resources.aruvam}</div>
+          </div>
+        </div>
+
+        {/* Arivu (Knowledge) */}
+        <div id="resource-card-arivu" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+          <div className="resource-icon-float w-8 h-8 rounded bg-[#4A90E2] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">👁️</div>
+          <div>
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Arivu (Knowledge)</div>
+            <div id="resource-val-arivu" className="text-base font-mono font-bold text-[#4A90E2] inline-block">{resources.arivu}</div>
+          </div>
+        </div>
+
+        {/* Anbu (Culture/Devotion) */}
+        <div id="resource-card-anbu" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+          <div className="resource-icon-float w-8 h-8 rounded bg-[#FF6B6B] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">🪷</div>
+          <div>
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Anbu (Devotion)</div>
+            <div id="resource-val-anbu" className="text-base font-mono font-bold text-[#FF6B6B] inline-block">{resources.anbu}</div>
+          </div>
+        </div>
+
+        {/* Aalavan (Power/Soldiers) */}
+        <div id="resource-card-aalavan" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3">
+          <div className="resource-icon-float w-8 h-8 rounded bg-[#8B0000] flex items-center justify-center text-white text-lg font-bold shadow-md select-none">⚔️</div>
+          <div>
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Aalavan (Power)</div>
+            <div id="resource-val-aalavan" className="text-base font-mono font-bold text-red-500 inline-block">{resources.aalavan}</div>
+          </div>
+        </div>
+
+        {/* Workers Status */}
+        <div id="resource-card-workers" className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3 col-span-2 md:col-span-1">
+          <div className="resource-icon-float w-8 h-8 rounded bg-[#D2691E] flex items-center justify-center text-black text-lg font-bold shadow-md select-none">👷</div>
+          <div>
+            <div className="text-[9px] uppercase font-mono tracking-wider text-stone-400">Workers (Idle/Total)</div>
+            <div id="resource-val-workers" className="text-sm font-mono font-bold text-stone-200 inline-block">
               <span className="text-[#D2691E] text-base">{availableWorkers}</span> / {totalWorkers}
             </div>
-          </div>
-        </div>
-
-        {/* Livestock */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Idle / total draft animals">
-          <div className="w-8 h-8 rounded bg-[#7f7d79] flex items-center justify-center text-lg shadow-md">🐘</div>
-          <div className="font-mono leading-tight">
-            <div className="text-[9px] uppercase tracking-wider text-stone-400">Livestock</div>
-            <div className="text-xs font-bold text-stone-200 flex gap-2">
-              <span title="Elephants">🐘 <span className="text-[#D4AF37]">{availableElephants}</span>/{livestock.elephants}</span>
-              <span title="Oxen">🐂 <span className="text-[#D4AF37]">{availableOxen}</span>/{livestock.oxen}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Buildings */}
-        <div className="bg-[#2D241E] p-3 rounded-lg border border-[#D2691E]/30 flex items-center gap-3" title="Constructed buildings">
-          <div className="w-8 h-8 rounded bg-[#a8432f] flex items-center justify-center text-lg shadow-md">🏛️</div>
-          <div className="font-mono leading-tight">
-            <div className="text-[9px] uppercase tracking-wider text-stone-400">Buildings</div>
-            <div className="text-base font-bold text-stone-200">{buildingCount}</div>
           </div>
         </div>
 
@@ -759,15 +852,15 @@ export default function App() {
         </button>
 
         <button
-          id="tab-army"
-          onClick={() => { audio.playYazh(440.00); setActiveTab('army'); }}
+          id="tab-voxel"
+          onClick={() => { audio.playYazh(440.00); setActiveTab('voxel'); }}
           className={`flex-1 py-3 text-center text-xs font-mono font-bold uppercase tracking-wider transition ${
-            activeTab === 'army'
-              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold'
+            activeTab === 'voxel' 
+              ? 'bg-[#2D241E] text-[#D2691E] border-b-2 border-[#D2691E] font-bold' 
               : 'text-stone-400 hover:text-stone-200 hover:bg-[#3D3028]/40'
           }`}
         >
-          ⚔️ Padai War Council
+          🧊 MagicaVoxel Studio (MCP)
         </button>
 
       </nav>
@@ -784,17 +877,10 @@ export default function App() {
             onEarnResources={handleEarnResources}
             rampTechUnlocked={isRampUnlocked}
             poetGuildUnlocked={isPoetGuildUnlocked}
-            armyStrengthValue={militaryStrength}
-            onConsumeDefender={consumeDefender}
-          />
-        )}
-
-        {activeTab === 'army' && (
-          <WarCouncil
-            army={army}
-            resources={resources}
-            barracksCount={barracksCount}
-            onRecruit={recruitUnit}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            isKappalUnlocked={isKappalUnlocked}
+            monsoonWeather={monsoonWeather}
           />
         )}
 
@@ -804,15 +890,9 @@ export default function App() {
             onUpdateCell={handleUpdateCell}
             onUpgradeCell={handleUpgradeCell}
             onAssignWorkers={handleAssignWorkers}
-            onAssignAnimals={handleAssignAnimals}
-            onBuyElephant={buyElephant}
-            onBuyOx={buyOx}
             resources={resources}
             availableWorkers={availableWorkers}
             totalWorkers={totalWorkers}
-            availableElephants={availableElephants}
-            availableOxen={availableOxen}
-            livestock={livestock}
           />
         )}
 
@@ -823,15 +903,30 @@ export default function App() {
             onTradeLoss={handleTradeLoss}
             kadalPiraUnlocked={isKappalUnlocked}
             compassUnlocked={isCompassUnlocked}
-            shipyardCount={shipyardCount}
+            monsoonWeather={monsoonWeather}
           />
         )}
+
 
         {activeTab === 'tech' && (
           <PalmLeafTechTree
             techNodes={techs}
             onUnlockTech={handleUnlockTech}
             arivu={resources.arivu}
+          />
+        )}
+
+        {activeTab === 'voxel' && (
+          <MagicaVoxelStudio
+            onExportToCityGrid={() => {
+              addToast({
+                title: 'MagicaVoxel Model Applied!',
+                description: 'Custom 3D voxel structure skin synced to Nagara City Planner.',
+                icon: '🧊',
+                type: 'tech'
+              });
+              setActiveTab('grid');
+            }}
           />
         )}
       </main>
@@ -869,10 +964,13 @@ export default function App() {
               <strong>Pillars of Society:</strong> Balance <strong>Aruvam</strong> (Wealth), <strong>Arivu</strong> (Knowledge), <strong>Anbu</strong> (Culture), and <strong>Aalavan</strong> (Military Force).
             </li>
             <li>
-              <strong>The Nagara Planner:</strong> Zone agricultural fields near the Cauvery river or build <strong>Eri reservoirs</strong>. Crop yields will double under irrigation!
+              <strong>The Nagara Planner:</strong> Zone agricultural fields near the Cauvery river or build <EpigraphTerm termId="eri_irrigation" onOpen={handleOpenEpigraph}>Eri reservoirs</EpigraphTerm>. Crop yields will double under irrigation!
             </li>
             <li>
-              <strong>The Trade Fleets:</strong> Dock ships at <strong>Nagapattinam Port</strong> and dispatch heavy <strong>Kappal</strong> vessels to Sri Lanka, Srivijaya, and China.
+              <strong>The Trade Fleets:</strong> Dock ships at <strong>Nagapattinam Port</strong> and dispatch heavy <EpigraphTerm termId="kadal_pira" onOpen={handleOpenEpigraph}>Kadal Pira</EpigraphTerm> navy vessels to Sri Lanka, Srivijaya, and China.
+            </li>
+            <li>
+              <strong>Democracy & Records:</strong> Discover the ancient <EpigraphTerm termId="kudavolai" onOpen={handleOpenEpigraph}>Kudavolai electoral pot ballot</EpigraphTerm> system and <EpigraphTerm termId="meikirthi" onOpen={handleOpenEpigraph}>Meikirthi stone archives</EpigraphTerm>.
             </li>
             <li>
               <strong>Campaign Mission:</strong> Step through the 4 phases to excavate granite, research the Elephant Ramp, catch spies, and host the spectacular Consecration!
@@ -885,8 +983,15 @@ export default function App() {
         </div>
       </CopperPlateModal>
 
-      {/* Global micro-interaction / progress notifications */}
-      <Toaster />
+      {/* TOAST NOTIFICATIONS CONTAINER */}
+      <ToastNotification toasts={toasts} onDismiss={removeToast} />
+
+      {/* EPIGRAPHICAL DATABASE MODAL */}
+      <EpigraphicalDatabase
+        isOpen={isEpigraphModalOpen}
+        onClose={() => setIsEpigraphModalOpen(false)}
+        initialTermId={selectedEpigraphTermId}
+      />
 
     </div>
   );
