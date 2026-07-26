@@ -9,14 +9,32 @@ var wood := 80
 var stone := 60
 var gold := 40
 
-# Population is the live count of player-owned units (group "pop"); pop_cap
-# grows as houses/town-centres are built (M5). Fixed for now.
-var pop_cap := 15
+# Population is the live count of player-owned units (group "pop"). The cap is a
+# base plus room per player House (group "house"), so building Houses lets you
+# field a bigger army (M5).
+const POP_BASE := 10
+const POP_PER_HOUSE := 5
 
 signal changed
+signal match_ended(player_won)      # emitted once when a Town Centre falls
+
+var _ended := false
 
 func pop() -> int:
 	return get_tree().get_nodes_in_group("pop").size() if is_inside_tree() else 0
+
+func pop_cap() -> int:
+	if not is_inside_tree():
+		return POP_BASE
+	return POP_BASE + get_tree().get_nodes_in_group("house").size() * POP_PER_HOUSE
+
+# Called by Building when a Town Centre is destroyed. If the fallen TC was the
+# enemy's, the player wins; if it was the player's, the player loses.
+func report_town_center_destroyed(was_enemy: bool) -> void:
+	if _ended:
+		return
+	_ended = true
+	match_ended.emit(was_enemy)
 
 func amount(kind: int) -> int:
 	match kind:
@@ -46,7 +64,7 @@ func try_spend(f := 0, w := 0, s := 0, g := 0) -> bool:
 	return true
 
 func has_pop_room() -> bool:
-	return pop() < pop_cap
+	return pop() < pop_cap()
 
 # Poke the HUD when something outside the ledger changes (pop, cap).
 func notify_changed() -> void:

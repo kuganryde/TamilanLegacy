@@ -19,7 +19,7 @@ extends Node3D
 var health := 0.0
 
 var _move_target       # Vector3 or null
-var _attack_target: Unit = null
+var _attack_target = null        # Unit or Building (duck-typed: health, take_damage)
 var _cooldown := 0.0
 var _agent: NavigationAgent3D
 var _ring: MeshInstance3D
@@ -95,7 +95,7 @@ func move_to(point: Vector3) -> void:
 	_attack_target = null
 	_agent.target_position = point
 
-func attack_target(t: Unit) -> void:
+func attack_target(t) -> void:
 	_attack_target = t
 	_move_target = null
 
@@ -160,7 +160,25 @@ func _acquire_target() -> void:
 		if d < best_dist:
 			best_dist = d
 			best = u
-	_attack_target = best
+	if best != null:
+		_attack_target = best
+		return
+	# Enemy fighters with nothing to fight march on the nearest player building,
+	# so the player can actually be defeated (basic aggression pending full AI).
+	_attack_target = _nearest_enemy_building() if (enemy and attack_damage > 0) else null
+
+func _nearest_enemy_building():
+	var best = null
+	var best_dist := INF
+	for node in get_tree().get_nodes_in_group("buildings"):
+		var b := node as Building
+		if b == null or b.enemy == enemy or b.health <= 0:
+			continue
+		var d := _flat_dist(global_position, b.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = b
+	return best
 
 # ---- helpers ---------------------------------------------------------------
 # Steer straight at a world target this frame and face travel. Returns the

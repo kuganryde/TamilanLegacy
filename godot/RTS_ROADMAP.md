@@ -34,11 +34,15 @@ multi-milestone build; this file is the plan and the running status.
       Gold, depletes and frees itself); `DropOff` (banks into `MatchEconomy`);
       `MatchEconomy` autoload (resource ledger + live population); `ResourceHud`
       top bar. **Right-click a node with villagers selected to task them.**
-      *← you are here.* TODO (next passes): population cap raised by houses,
-      buildable farms, villager build/repair, a carry indicator.
-- [ ] **M5 — Buildings & production.** Place buildings (ghost + validity),
-      construction over time, Barracks/Archery-Range/Stable **train** units with
-      a queue; Town Center; tech/upgrades (reuse the Olai Chuvadi tree).
+- [x] **M5 — Buildings, production & win/lose.** `Building` (Town Centre /
+      Barracks / House) with HP, team rings and health bars; **train** units by
+      spending resources (Town Centre → villagers, Barracks → warriors) via the
+      `CommandCard`; **place** Houses/Barracks with a ghost that follows the
+      cursor; Houses raise the population cap; buildings are destructible and
+      units can attack them; **destroy the enemy Town Centre to win** (lose yours
+      and it's `DEFEAT`) via `GameOverOverlay`. Idle enemy fighters march on your
+      base so the match is losable before full AI. *← you are here.* TODO:
+      construction-in-progress time, placement validity, tech/upgrades.
 - [ ] **M6 — Opponent AI.** Simple skirmish AI: expand, gather, army up, attack
       waves. Fog of war + minimap.
 - [ ] **M7 — Ages.** Sangam → Pallava → Imperial Chola age-up gating buildings,
@@ -88,6 +92,9 @@ future `MatchState` holds teams, populations, and per-player fog.
 - **Pan:** WASD / arrow keys   **Rotate:** Q / E   **Zoom:** mouse wheel
 - **Select:** left-click a unit   **Box-select:** left-drag a rectangle
 - **Move:** right-click the ground (selection moves in formation)
-- **Attack:** right-click an enemy unit (whole selection engages)
+- **Attack:** right-click an enemy unit or building (whole selection engages)
 - **Gather:** select villagers (amber rings), right-click a resource node
+- **Train:** select a Town Centre / Barracks → click a train button (command card)
+- **Build:** select a villager → Build House/Barracks → click ground to place (Esc/right-click cancels)
 - **Control groups:** Ctrl+1–9 assign the selection, 1–9 recall it
+- **Goal:** destroy the enemy Town Centre; don't lose yours

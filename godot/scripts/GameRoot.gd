@@ -26,8 +26,10 @@ func _ready() -> void:
 	add_child(RtsCamera.new())        # AoE-style pan / rotate / zoom
 	add_child(SelectionManager.new()) # click / drag-box select, right-click move / gather
 	_spawn_units()
-	_spawn_economy()                  # villagers, resource nodes, drop-off (M4)
+	_spawn_economy()                  # villagers, resource nodes (M4)
+	_spawn_buildings()                # town centres, barracks, houses (M5)
 	add_child(ResourceHud.new())      # top resource/pop bar (M4)
+	add_child(GameOverOverlay.new())  # victory / defeat (M5)
 
 	# Bake once the geometry exists. If the bake is empty, units fall back to
 	# direct movement — so the game is playable either way.
@@ -51,10 +53,6 @@ func _spawn_units() -> void:
 # resource nodes, and villagers ready to be tasked (right-click a node with
 # villagers selected).
 func _spawn_economy() -> void:
-	var drop := DropOff.new()
-	drop.position = Vector3(-1.5, 0, 5.0)
-	add_child(drop)
-
 	_spawn_resource(GameEnums.ResourceKind.STONE, 220, Vector3(2.6, 0, 5.4))
 	_spawn_resource(GameEnums.ResourceKind.STONE, 220, Vector3(3.3, 0, 6.1))
 	_spawn_resource(GameEnums.ResourceKind.WOOD, 260, Vector3(-4.2, 0, 5.6))
@@ -75,6 +73,25 @@ func _spawn_resource(kind: int, amount: float, pos: Vector3) -> void:
 	rn.amount = amount
 	rn.position = pos
 	add_child(rn)
+
+# M5: player base (Town Centre = drop-off + villager training, a Barracks, and
+# two Houses) on the south edge; the enemy base to the north (destroy its Town
+# Centre to win; lose yours and it's over).
+func _spawn_buildings() -> void:
+	_spawn_building(Building.Kind.TOWN_CENTER, false, Vector3(-1.5, 0, 5.2))
+	_spawn_building(Building.Kind.BARRACKS, false, Vector3(2.4, 0, 4.6))
+	_spawn_building(Building.Kind.HOUSE, false, Vector3(-3.6, 0, 4.4))
+	_spawn_building(Building.Kind.HOUSE, false, Vector3(-4.3, 0, 5.0))
+
+	_spawn_building(Building.Kind.TOWN_CENTER, true, Vector3(0.5, 0, -6.2))
+	_spawn_building(Building.Kind.BARRACKS, true, Vector3(3.0, 0, -5.6))
+
+func _spawn_building(kind: int, is_enemy: bool, pos: Vector3) -> void:
+	var b := Building.new()
+	b.kind = kind
+	b.enemy = is_enemy
+	b.position = pos
+	add_child(b)
 
 func _setup_environment() -> void:
 	var env := Environment.new()
