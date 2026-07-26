@@ -33,6 +33,7 @@ func _ready() -> void:
 	add_child(ResourceHud.new())      # top resource/pop bar (M4)
 	add_child(GameOverOverlay.new())  # victory / defeat (M5)
 	add_child(Dashboard.new())        # left info dashboard (M6)
+	add_child(GameControls.new())     # pause / speed / difficulty controls
 	add_child(EnemyAI.new())          # opponent AI: trains + attack waves (M6)
 	var minimap_layer := CanvasLayer.new()
 	minimap_layer.add_child(Minimap.new())   # bottom-right minimap (M6)

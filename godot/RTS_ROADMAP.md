@@ -107,4 +107,6 @@ future `MatchState` holds teams, populations, and per-player fog.
 - **Train:** select a Town Centre / Barracks → click a train button (command card)
 - **Build:** select a villager → Build House/Barracks → click ground to place (Esc/right-click cancels)
 - **Control groups:** Ctrl+1–9 assign the selection, 1–9 recall it
+- **Pause:** Spacebar (or the Pause button)
+- **Game speed / difficulty:** top-centre controls bar (0.5×–3× · Chill/Balanced/Ruthless)
 - **Goal:** destroy the enemy Town Centre; don't lose yours

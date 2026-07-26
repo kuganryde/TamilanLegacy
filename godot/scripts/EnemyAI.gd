@@ -7,18 +7,30 @@ extends Node
 # the enemy base visibly works.
 
 const WARRIOR_COST := 40.0
-const ARMY_CAP := 16
 const TRAIN_EVERY := 4.0
-const WAVE_EVERY := 26.0
+
+# Difficulty-tunable at runtime (see set_difficulty), driven by the controls bar.
+var _army_cap := 16
+var _wave_every := 26.0
+var _income := 7.0          # abstract "gathering" per second
 
 var _resources := 60.0
-var _income := 7.0          # abstract "gathering" per second
 var _train_t := 4.0
 var _wave_t := 22.0
 var _wave_num := 0
 
 func _ready() -> void:
+	add_to_group("enemy_ai")
 	call_deferred("_assign_gatherers")
+
+# 0 = Chill, 1 = Balanced, 2 = Ruthless. Retimes the next wave so a change lands
+# promptly without an instant rush.
+func set_difficulty(level: int) -> void:
+	match level:
+		0: _income = 4.0; _wave_every = 40.0; _army_cap = 10
+		2: _income = 12.0; _wave_every = 17.0; _army_cap = 26
+		_: _income = 7.0; _wave_every = 26.0; _army_cap = 16
+	_wave_t = min(_wave_t, _wave_every)
 
 func _process(delta: float) -> void:
 	_resources += _income * delta
@@ -30,12 +42,12 @@ func _process(delta: float) -> void:
 
 	_wave_t -= delta
 	if _wave_t <= 0.0:
-		_wave_t = WAVE_EVERY
+		_wave_t = _wave_every
 		_launch_wave()
 
 # ---- economy / production --------------------------------------------------
 func _try_train() -> void:
-	if _resources < WARRIOR_COST or _enemy_unit_count() >= ARMY_CAP:
+	if _resources < WARRIOR_COST or _enemy_unit_count() >= _army_cap:
 		return
 	var b = _find_enemy_building(Building.Kind.BARRACKS)
 	if b == null:
