@@ -25,8 +25,8 @@ func _ready() -> void:
 			Vector3(7.2, 0, 6.6), Vector3(-5.6, 0, 2.2)]:
 		_add_model("palm.glb", p, randf_range(0.8, 1.15), randf_range(0, TAU))
 
-	_add_model("elephant.glb", Vector3(-2.4, 0, 7.2), 0.9, PI)
-	_add_model("elephant.glb", Vector3(3.4, 0, 6.9), 0.9, PI * 0.85)
+	_add_model("elephant_hi.glb", Vector3(-2.4, 0, 7.2), 0.7, PI)
+	_add_model("elephant_hi.glb", Vector3(3.4, 0, 6.9), 0.7, PI * 0.85)
 
 # ---- water & ships ---------------------------------------------------------
 func _add_sea() -> void:

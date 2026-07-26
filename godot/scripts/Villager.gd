@@ -21,11 +21,11 @@ var _carry := 0.0
 func _load_model() -> Node3D:
 	# Reuse the warrior rig at a smaller scale as a stand-in villager body;
 	# a dedicated civilian model is a later art pass.
-	var packed := ResourceLoader.load("res://assets/models/sangam_warrior_rig.glb") as PackedScene
+	var packed := ResourceLoader.load("res://assets/models/warrior_hi.glb") as PackedScene
 	if packed == null:
 		return null
 	var model := packed.instantiate() as Node3D
-	model.scale = Vector3.ONE * 0.24
+	model.scale = Vector3.ONE * 0.22
 	return model
 
 func _ring_color() -> Color:

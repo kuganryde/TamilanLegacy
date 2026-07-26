@@ -77,8 +77,8 @@ func _ready() -> void:
 
 # Overridable so subclasses (Villager) can pick a different model/scale.
 func _load_model() -> Node3D:
-	var path := "res://assets/models/sangam_spearman_rig.glb" if enemy \
-		else "res://assets/models/sangam_warrior_rig.glb"
+	var path := "res://assets/models/spearman_hi.glb" if enemy \
+		else "res://assets/models/warrior_hi.glb"
 	var packed := ResourceLoader.load(path) as PackedScene
 	if packed == null:
 		return null
