@@ -20,11 +20,12 @@ func _ready() -> void:
 	_nav.navigation_mesh = nm
 	add_child(_nav)
 
-	_build_ground(16, 16)             # added under _nav
+	_build_ground(18, 18)             # added under _nav
 	_nav.add_child(Board.new())       # city tiles + building .glb
 
 	add_child(RtsCamera.new())        # AoE-style pan / rotate / zoom
 	add_child(SelectionManager.new()) # click / drag-box select, right-click move / gather
+	add_child(Scenery.new())          # sea, ships, fields, eri, palms (decor)
 	_spawn_units()
 	_spawn_economy()                  # villagers, resource nodes (M4)
 	_spawn_buildings()                # town centres, barracks, houses (M5)
