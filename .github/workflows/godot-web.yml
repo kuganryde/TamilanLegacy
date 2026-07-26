@@ -2,14 +2,12 @@ name: Deploy Godot RTS to Web
 
 # Compiles/imports the Godot (GDScript) project in godot/, exports an HTML5
 # build, and publishes it to GitHub Pages. No secrets required — uses the
-# built-in GITHUB_TOKEN + Pages. Runs on pushes to main that touch the game,
-# and on manual dispatch.
+# built-in GITHUB_TOKEN + Pages. Runs on EVERY push to main (not just godot/
+# changes) so it always re-publishes the game and re-wins the Pages deployment
+# over any stray "static"/"jekyll" workflow, and on manual dispatch.
 on:
   push:
     branches: [main]
-    paths:
-      - "godot/**"
-      - ".github/workflows/godot-web.yml"
   workflow_dispatch:
 
 permissions:
