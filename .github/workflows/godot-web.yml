@@ -1,0 +1,67 @@
+name: Deploy Godot RTS to Web
+
+# Compiles/imports the Godot (GDScript) project in godot/, exports an HTML5
+# build, and publishes it to GitHub Pages. No secrets required — uses the
+# built-in GITHUB_TOKEN + Pages. Runs on EVERY push to main (not just godot/
+# changes) so it always re-publishes the game and re-wins the Pages deployment
+# over any stray "static"/"jekyll" workflow, and on manual dispatch.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  export:
+    name: Export HTML5
+    runs-on: ubuntu-latest
+    # Image ships Godot 4.3 + matching export templates (standard/GDScript build).
+    container:
+      image: barichello/godot-ci:4.3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install export templates
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates/
+          mv /root/.local/share/godot/export_templates/4.3.stable ~/.local/share/godot/export_templates/ || true
+
+      - name: Import project (build resource cache)
+        working-directory: godot
+        run: godot --headless --import || true
+
+      - name: Web export
+        working-directory: godot
+        run: |
+          mkdir -p ../build/web
+          godot --headless --verbose --export-release "Web" ../build/web/index.html
+
+      - name: Disable Jekyll (serve _-prefixed files)
+        run: touch build/web/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    name: Deploy to Pages
+    needs: export
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
