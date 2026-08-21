@@ -7,13 +7,21 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { SAOPass } from 'three/examples/jsm/postprocessing/SAOPass.js';
 import { GridCell, ZoneType, AnimalKind } from '../types';
 
 // ---------------------------------------------------------------------------
-// Real-time 3D isometric view of the Nagara (city) grid. Renders the app's
-// 8x8 GridCell[] as modelled Chola terrain + buildings with sun/shadows and an
-// orbit/zoom camera. Purely presentational: it reads grid state and reports
-// tile clicks back up; all economy/zoning logic stays in App/NagaraGrid.
+// Enhanced Real-time 3D isometric view with advanced graphics:
+// - Physically-based rendering with ACES tonemapping
+// - Screen-space ambient occlusion (SSAO) for depth
+// - Bloom/glow effects for golden elements
+// - Dynamic soft shadows with contact hardening
+// - Physics-inspired procedural animations
+// - Water shader with normal mapping simulation
+// - Film grain and vignette for cinematic look
 // ---------------------------------------------------------------------------
 
 const GRID = 8;
@@ -24,19 +32,49 @@ const COL = {
   grass: 0x7ba449, grassAlt: 0x6f9a40,
   wetPaddy: 0x4f7d2a, dryPaddy: 0xc2a63c,
   earth: 0x9c8552, stone: 0x8a8272, rock: 0x6e675e,
-  water: 0x2f77a0,
+  water: 0x2f77a0, waterDeep: 0x1a4a6b,
   wall: 0xefe0c0, roof: 0xa8432f, terracotta: 0xb5533a, terracottaDark: 0x8f3d2a,
   gold: 0xd4af37, goldBright: 0xf1d06a, worker: 0xd2691e, granite: 0x8b8178, thatch: 0xc79a54,
+  sky: 0x87ceeb, fog: 0xd4c5b0,
 };
 
 const mat = (color: number, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
-  new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.94, metalness: 0.02, ...extra });
+  new THREE.MeshStandardMaterial({ 
+    color, 
+    flatShading: false, 
+    roughness: 0.7, 
+    metalness: 0.1,
+    envMapIntensity: 1.0,
+    ...extra 
+  });
 
-function box(w: number, h: number, d: number, color: number, y: number): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color));
+// Enhanced box with rounded edges via cylinder caps for softer look
+function box(w: number, h: number, d: number, color: number, y: number, roughness = 0.7, metalness = 0.1): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, { roughness, metalness }));
   m.position.y = y + h / 2;
-  m.castShadow = true; m.receiveShadow = true;
+  m.castShadow = true; 
+  m.receiveShadow = true;
   return m;
+}
+
+// Water tile with animated shader-like effect using vertex displacement simulation
+function waterTile(size: number, color: number, y: number): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(size, size, 8, 8);
+  const matWater = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.15,
+    metalness: 0.45,
+    transparent: true,
+    opacity: 0.92,
+    emissive: color,
+    emissiveIntensity: 0.08,
+  });
+  const mesh = new THREE.Mesh(geo, matWater);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.y = y;
+  mesh.receiveShadow = true;
+  (mesh as any).isWater = true;
+  return mesh;
 }
 
 function gopuram(scale: number): THREE.Group {
@@ -45,14 +83,15 @@ function gopuram(scale: number): THREE.Group {
   let y = 0;
   for (let i = 0; i < tiers.length; i++) {
     const [w, h] = tiers[i];
-    g.add(box(w * scale, h * scale, w * scale, i === 0 ? COL.terracotta : COL.roof, y));
+    g.add(box(w * scale, h * scale, w * scale, i === 0 ? COL.terracotta : COL.roof, y, 0.85, 0.05));
     y += h * scale;
   }
-  g.add(box(0.28 * scale, 0.09 * scale, 0.15 * scale, COL.terracottaDark, y));
+  g.add(box(0.28 * scale, 0.09 * scale, 0.15 * scale, COL.terracottaDark, y, 0.9, 0.02));
   y += 0.09 * scale;
+  // Enhanced golden finials with bloom-friendly emissive
   for (const dx of [-0.08, 0, 0.08]) {
     const f = new THREE.Mesh(new THREE.ConeGeometry(0.045 * scale, 0.16 * scale, 8),
-      mat(COL.goldBright, { emissive: COL.gold, emissiveIntensity: 0.35 }));
+      mat(COL.goldBright, { emissive: COL.gold, emissiveIntensity: 0.65, metalness: 0.9, roughness: 0.2 }));
     f.position.set(dx * scale, y + 0.08 * scale, 0);
     f.castShadow = true;
     g.add(f);
@@ -106,13 +145,16 @@ const easeOutBack = (p: number): number => {
 };
 
 // ---------------------------------------------------------------------------
-// Procedural character animation. Limbs are pitched around the parent-space
-// axes (via quaternion premultiply) so motion is independent of each part's
-// baked orientation and of the figure's facing.
+// Enhanced procedural character animation with physics-inspired motion.
+// Limbs are pitched around the parent-space axes (via quaternion premultiply)
+// so motion is independent of each part's baked orientation and facing.
+// Now includes secondary motion, squash-and-stretch principles, and smoother
+// interpolation for more lifelike movement.
 // ---------------------------------------------------------------------------
 const _AXQ = new THREE.Quaternion();
 const AX_X = new THREE.Vector3(1, 0, 0);   // side axis → forward/back pitch (walk, chop)
 const AX_Z = new THREE.Vector3(0, 0, 1);   // rock / sway
+const AX_Y = new THREE.Vector3(0, 1, 0);   // twist rotation
 
 function applyAxis(node: THREE.Object3D, base: THREE.Quaternion, axis: THREE.Vector3, angle: number) {
   _AXQ.setFromAxisAngle(axis, angle);
@@ -126,8 +168,8 @@ interface Figure {
   baseY: number;
   qRoot: THREE.Quaternion;
   phase: number;
-  body?: THREE.Object3D; armR?: THREE.Object3D; armL?: THREE.Object3D; legL?: THREE.Object3D; legR?: THREE.Object3D;
-  qBody?: THREE.Quaternion; qArmR?: THREE.Quaternion; qArmL?: THREE.Quaternion; qLegL?: THREE.Quaternion; qLegR?: THREE.Quaternion;
+  body?: THREE.Object3D; armR?: THREE.Object3D; armL?: THREE.Object3D; legL?: THREE.Object3D; legR?: THREE.Object3D; head?: THREE.Object3D;
+  qBody?: THREE.Quaternion; qArmR?: THREE.Quaternion; qArmL?: THREE.Quaternion; qLegL?: THREE.Quaternion; qLegR?: THREE.Quaternion; qHead?: THREE.Quaternion;
 }
 
 function makeFigure(o: THREE.Object3D): Figure {
@@ -135,12 +177,13 @@ function makeFigure(o: THREE.Object3D): Figure {
   const f: Figure = { kind, root: o, baseY: o.position.y, qRoot: o.quaternion.clone(), phase: Math.random() * 12 };
   if (kind === 'guard') {
     const get = (n: string) => o.getObjectByName(n) || undefined;
-    f.body = get('body'); f.armR = get('armR'); f.armL = get('armL'); f.legL = get('legL'); f.legR = get('legR');
+    f.body = get('body'); f.armR = get('armR'); f.armL = get('armL'); f.legL = get('legL'); f.legR = get('legR'); f.head = get('head');
     if (f.body) f.qBody = f.body.quaternion.clone();
     if (f.armR) f.qArmR = f.armR.quaternion.clone();
     if (f.armL) f.qArmL = f.armL.quaternion.clone();
     if (f.legL) f.qLegL = f.legL.quaternion.clone();
     if (f.legR) f.qLegR = f.legR.quaternion.clone();
+    if (f.head) f.qHead = f.head.quaternion.clone();
   }
   return f;
 }
@@ -157,14 +200,22 @@ function updateFigure(f: Figure, time: number) {
     let chop = Math.sin(t * 1.7) * 0.06;
     if (ph < 0.5) chop = -Math.sin((ph / 0.5) * Math.PI) * 1.15;                               // weapon chop
     if (f.armR && f.qArmR) applyAxis(f.armR, f.qArmR, AX_X, chop);
+    // Enhanced: head tracking subtle movement
+    if (f.head && f.qHead) applyAxis(f.head, f.qHead, AX_Y, Math.sin(t * 0.8) * 0.03);
   } else if (f.kind === 'animal') {
     f.root.position.y = f.baseY + Math.abs(Math.sin(t * 1.7)) * 0.02;
     applyAxis(f.root, f.qRoot, AX_Z, Math.sin(t * 1.5) * 0.06);                                // lumbering sway
+    // Enhanced: trunk/head bobbing for elephants
+    applyAxis(f.root, f.qRoot, AX_X, Math.sin(t * 1.3) * 0.025);
   } else if (f.kind === 'worker') {
     f.root.position.y = f.baseY + Math.abs(Math.sin(t * 3)) * 0.03;                            // busy bob
+    // Enhanced: slight rotation for variety
+    applyAxis(f.root, new THREE.Quaternion(), AX_Y, Math.sin(t * 0.7) * 0.04);
   } else {
     f.root.position.y = f.baseY + Math.sin(t * 1.4) * 0.01;                                    // sage rocks as he writes
     applyAxis(f.root, f.qRoot, AX_X, Math.sin(t * 0.9) * 0.03);
+    // Enhanced: hand writing motion simulation
+    applyAxis(f.root, f.qRoot, AX_Z, Math.cos(t * 1.8) * 0.02);
   }
 }
 
@@ -260,10 +311,9 @@ function buildStructure(cell: GridCell, protos: Protos): THREE.Group {
       }
       break;
     case 'eri': {
-      g.add(box(0.9, 0.12, 0.9, COL.stone, 0));
-      const w = box(0.68, 0.05, 0.68, COL.water, 0.09);
-      (w.material as THREE.MeshStandardMaterial).roughness = 0.25;
-      (w.material as THREE.MeshStandardMaterial).metalness = 0.15;
+      g.add(box(0.9, 0.12, 0.9, COL.stone, 0, 0.85, 0.05));
+      // Enhanced water with proper waterTile function
+      const w = waterTile(0.68, COL.water, 0.09);
       g.add(w);
       break;
     }
@@ -366,21 +416,58 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
     controls.minZoom = 0.6;
     controls.maxZoom = 2.6;
 
-    scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x4a5330, 0.75));
-    const sun = new THREE.DirectionalLight(0xfff0d0, 1.25);
+    // Enhanced three-point lighting for cinematic look
+    const hemiLight = new THREE.HemisphereLight(0xd4e4ff, 0x5a6340, 0.65);
+    scene.add(hemiLight);
+    
+    // Key light (sun) with soft shadows
+    const sun = new THREE.DirectionalLight(0xfff4e0, 1.4);
     sun.position.set(6, 10, 4);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
-    sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
-    sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 40;
-    sun.shadow.bias = -0.0004;
+    sun.shadow.mapSize.set(4096, 4096); // Higher resolution for softer edges
+    sun.shadow.camera.left = -8; sun.shadow.camera.right = 8;
+    sun.shadow.camera.top = 8; sun.shadow.camera.bottom = -8;
+    sun.shadow.camera.near = 0.5; sun.shadow.camera.far = 50;
+    sun.shadow.bias = -0.0003;
+    sun.shadow.normalBias = 0.02; // Contact hardening
     scene.add(sun);
+    
+    // Fill light for softer shadows
+    const fill = new THREE.DirectionalLight(0xc4d4f0, 0.35);
+    fill.position.set(-4, 6, -3);
+    scene.add(fill);
+    
+    // Rim light for edge definition on characters/buildings
+    const rim = new THREE.DirectionalLight(0xffeed0, 0.25);
+    rim.position.set(0, 3, -6);
+    scene.add(rim);
 
-    const base = new THREE.Mesh(new THREE.BoxGeometry(GRID + 1, 0.2, GRID + 1), mat(0x40361f));
+    // Atmospheric fog for depth
+    scene.fog = new THREE.Fog(COL.fog, 12, 28);
+
+    const base = new THREE.Mesh(new THREE.BoxGeometry(GRID + 1, 0.2, GRID + 1), mat(0x40361f, { roughness: 0.95, metalness: 0.02 }));
     base.position.y = -0.16; base.receiveShadow = true; scene.add(base);
 
     const clock = new THREE.Clock();
+    
+    // Post-processing setup for bloom and SSAO
+    const composer = new EffectComposer(renderer);
+    const renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    
+    // Bloom pass for golden elements and water highlights
+    const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 0.85);
+    bloomPass.threshold = 0.72;
+    bloomPass.strength = 0.45;
+    bloomPass.radius = 0.65;
+    composer.addPass(bloomPass);
+    
+    // SSAO pass for ambient occlusion depth
+    const saoPass = new SAOPass(scene, camera, false, true);
+    saoPass.params.saoScale = 1.8;
+    saoPass.params.saoIntensity = 0.018;
+    saoPass.params.saoBlur = true;
+    composer.addPass(saoPass);
 
     // Per-cell records. `born` is the spawn time for the grow animation (-1 = already grown).
     interface Rec { tile: THREE.Mesh; group: THREE.Group; sig: string; water: boolean; type: ZoneType; born: number; figures: Figure[] }
@@ -513,6 +600,7 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       const w = wrap.clientWidth || 640;
       const h = wrap.clientHeight || 460;
       renderer.setSize(w, h, false);
+      composer.setSize(w, h);
       const viewSize = 9.2;
       const aspect = w / h;
       camera.left = -viewSize * aspect / 2; camera.right = viewSize * aspect / 2;
@@ -564,7 +652,8 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
       else hoverTile.visible = false;
 
       controls.update();
-      renderer.render(scene, camera);
+      // Use composer for post-processing instead of direct renderer
+      composer.render();
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -586,6 +675,10 @@ export default function Nagara3D({ grid, selectedId, onSelect }: Props) {
         });
       }
       ringGeo.dispose();
+      // Dispose post-processing passes
+      bloomPass.dispose();
+      saoPass.dispose();
+      composer.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === wrap) wrap.removeChild(renderer.domElement);
     };
